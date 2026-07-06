@@ -1,0 +1,206 @@
+Enhanced problem statement
+Title
+AI-Powered MSME Financial Health Card for New-to-Credit and New-to-Bank Enterprises
+
+Background
+Banks still evaluate most MSME loan applications using traditional documents such as audited financial statements, income tax returns, bank statements, collateral records, and bureau history. This approach excludes many viable New-to-Credit (NTC) and New-to-Bank (NTB) MSMEs that operate actively but lack formal financial depth, standardized documentation, or prior borrowing records.
+
+At the same time, many of these businesses generate rich digital footprints through GST filings, e-invoices, UPI collections, consented bank transaction data, payroll contributions, utility usage, and other business activity streams that can serve as credible proxies for cash flow health, operational discipline, business continuity, and repayment capacity. Account Aggregator is specifically intended to enable secure, consent-based sharing of such financial information, and digital lending rules apply to MSME loans as well when the lending flow qualifies as digital lending.
+
+Core problem
+There is no unified, explainable, near real-time framework that converts alternate digital business data into a lender-ready MSME financial health assessment. Because of this gap, lenders face slow underwriting, high false rejections, limited portfolio diversification, inconsistent risk assessment for thin-file borrowers, and missed opportunities for formal credit inclusion.
+
+Objective
+Design and build an AI/ML-powered Financial Health Card that aggregates consented alternate digital data from multiple sources, transforms it into risk-relevant features, and produces an explainable multidimensional score for MSME financial health and creditworthiness. The system should support underwriting and monitoring of businesses with limited traditional credit history while remaining transparent, auditable, and compliant with consent-led digital lending practices.
+
+Expanded solution scope
+Data sources
+The proposed system should support ingestion of the following sources, subject to user consent and lawful access:
+
+GST returns and e-invoice-linked business activity.
+
+UPI collection patterns and digital payment behavior.
+
+Account Aggregator-based bank transaction data and statement equivalents.
+
+EPFO contribution trends as a proxy for payroll stability and formal workforce continuity.
+
+Electricity or utility consumption as an operational activity signal.
+
+Optional supplementary records such as bank statements, invoice ledgers, Udyam profile, bureau data when available, and sector benchmarks.
+
+Functional capabilities
+The solution should:
+
+Aggregate multi-source business data into a common data model.
+
+Clean, normalize, reconcile, and timestamp data for underwriting use.
+
+Generate feature sets related to cash flow, compliance, business momentum, volatility, seasonality, resilience, and concentration risk.
+
+Produce a Financial Health Score plus component sub-scores.
+
+Classify applicants into low, medium, and high risk bands.
+
+Surface reasons behind the score using explainable AI.
+
+Present underwriting insights in a dashboard for bankers and credit managers.
+
+Integrate with India’s digital public infrastructure direction through AA, and remain compatible with OCEN and ULI-oriented workflows.
+
+Sample scoring dimensions
+A strong solution should avoid a single opaque score and instead include weighted dimensions such as:
+
+Cash-flow strength.
+
+Revenue consistency.
+
+Compliance behavior.
+
+Operational continuity.
+
+Financial resilience.
+
+Credit augmentation, when bureau or repayment data exists.
+
+Expected outputs
+For each MSME, the system should generate:
+
+Overall Financial Health Score, for example 0 to 1000.
+
+Risk category: Low / Medium / High.
+
+Top positive drivers.
+
+Top negative drivers.
+
+Confidence or data sufficiency indicator.
+
+Recommended action: approve, approve with conditions, review manually, request more data, or decline.
+
+Architecture and workflow
+Proposed workflow
+Alternate Data Sources
+GST | UPI | AA | EPFO | Electricity | Bank Statements | Optional Bureau
+↓
+Data Ingestion and Consent Validation
+↓
+Data Cleaning, Standardization, and Reconciliation
+↓
+Feature Engineering and Risk Signal Extraction
+↓
+AI/ML Scoring Engine
+↓
+Explainability Layer and Reason Codes
+↓
+Risk Classification and Policy Rules
+↓
+Financial Health Card Dashboard
+↓
+Loan Decision Support and Ongoing Monitoring
+
+Suggested modules
+Consent manager: captures source-wise, purpose-bound consent and access duration. AA is designed around explicit, revocable consent, not blanket sharing.
+
+Source connectors: APIs, file uploads, OCR/parsers, AA flows, billing software adapters.
+
+Feature store: maintains reusable and versioned underwriting features.
+
+Model layer: combines interpretable scorecards with stronger ML models.
+
+Rules engine: overlays policy checks, sector-specific limits, and sanction logic.
+
+Audit and compliance layer: logs consent, model version, decision reasons, and data lineage. RBI’s digital lending approach emphasizes direct accountability of the regulated entity and customer-facing clarity.
+
+Best details to add
+Innovation points
+Add these details to make the problem statement stronger in a competition or proposal:
+
+Near real-time refresh: update the score as new GST, bank, UPI, or utility signals arrive.
+
+Thin-file underwriting: explicitly target borrowers with little or no bureau depth.
+
+Cash-flow lending orientation: move from collateral-heavy lending toward business-activity-based underwriting, which fits the promise described around AA-enabled lending.
+
+Cross-validation engine: compare declared turnover against GST and bank inflows to detect inconsistency.
+
+Fraud and anomaly detection: sudden invoice spikes, mismatched seasonality, suspicious payer concentration, repeated low-balance stress, tampered documents.
+
+Sector-aware benchmarking: compare firms against peer bands by industry, geography, and enterprise size.
+
+Early-warning monitoring: use the same framework post-disbursal for monthly deterioration alerts.
+
+Human-in-the-loop underwriting: AI supports the credit officer, rather than silently replacing them.
+
+Explainability-first design: every adverse or positive inference should be traceable to interpretable signals.
+
+Evaluation metrics
+A well-written statement should mention measurable success:
+
+Higher approval rate for creditworthy NTC/NTB MSMEs.
+
+Lower default or delinquency rate versus baseline underwriting.
+
+Faster time-to-decision.
+
+Better precision and recall on risk prediction.
+
+Higher onboarding of under-documented MSMEs.
+
+Reduced manual document handling and turnaround time.
+
+Tech stack ideas
+AI/ML: XGBoost, LightGBM, logistic scorecards, anomaly detection.
+
+Data engineering: Python, Spark or pandas, feature store, API gateway.
+
+XAI: SHAP, reason codes, monotonic constraints, score decomposition.
+
+Backend: FastAPI or Spring Boot.
+
+Frontend: React dashboard with drill-down views.
+
+Cloud: AWS, Azure, or GCP with encryption and audit logging.
+
+What not to do
+Product mistakes
+Do not build only a flashy dashboard without a real scoring methodology.
+
+Do not rely on one data source alone, such as just GST or just UPI.
+
+Do not produce a black-box score with no reasons, because underwriting needs traceability and defensibility.
+
+Do not assume missing traditional data always means high risk.
+
+Do not mix consumer-style behavioral gimmicks with business underwriting unless they are clearly lawful and relevant.
+
+Compliance and trust mistakes
+Do not collect more data than necessary for the stated underwriting purpose. RBI digital lending expectations emphasize need-based collection with borrower control and transparency.
+
+Do not take or store GST portal or bank login credentials as a shortcut.
+
+Do not scrape portals unofficially when consented or regulated access is expected.
+
+Do not access phone contacts, call logs, messages, or unrelated device data for lending decisions; such practices are exactly the kind of abuse digital lending regulation was meant to curb.
+
+Do not share applicant data with third parties without explicit consent, except where legally required.
+
+Do not hide decision logic from the lender or borrower-facing process.
+
+Risk-model mistakes
+Do not train a model without bias checks, calibration checks, and out-of-time validation.
+
+Do not equate correlation with causation; some alternate signals are noisy proxies.
+
+Do not ignore seasonality, sector effects, and regional business cycles.
+
+Do not overfit to synthetic or limited hackathon data and claim production readiness.
+
+Do not use only approval prediction; include repayment risk or delinquency orientation.
+
+Final polished statement
+One-line summary:
+Build an AI-powered, explainable MSME Financial Health Card that uses consented alternate digital data such as GST, UPI, AA, EPFO, utilities, and bank activity to assess the creditworthiness of New-to-Credit and New-to-Bank businesses in near real time, enabling faster, fairer, and more inclusive lending.
+
+Polished problem statement:
+Traditional MSME credit appraisal depends heavily on audited statements, collateral, tax filings, and bureau history, which excludes many viable NTC and NTB enterprises from formal credit. Meanwhile, these businesses increasingly leave behind rich digital evidence of commercial activity through GST, digital payments, bank transactions, payroll contributions, and utility consumption. The challenge is to transform this fragmented, alternate data into a unified, explainable, and lender-ready financial health assessment that works in near real time. The proposed solution should aggregate consented data from multiple sources, engineer meaningful business-risk signals, generate a multidimensional Financial Health Score, classify applicants by risk, and present transparent decision-support insights to lenders through a dashboard. The system should be compatible with India’s evolving digital lending ecosystem, including Account Aggregator and adjacent infrastructure such as OCEN and ULI, while improving credit access, underwriting speed, portfolio quality, and financial inclusion.
