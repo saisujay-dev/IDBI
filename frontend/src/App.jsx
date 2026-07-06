@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   RadarChart, PolarGrid, PolarAngleAxis, Radar,
@@ -11,6 +11,8 @@ import {
   generateUnderwriterNote,
   portfolioAnalytics,
 } from "./engine/explainability";
+import { useAuth } from "./auth/AuthContext";
+import AuthModal from "./auth/AuthModal";
 import "./index.css";
 
 // ── Pre-compute all scores ──────────────────────────────────────────────────
@@ -35,27 +37,206 @@ const SUB_SCORE_NAMES = {
   financialResilience:   "Financial Resilience",
 };
 
+// ── User Avatar ─────────────────────────────────────────────────────────────
+function UserAvatar({ user, size = 32 }) {
+  return (
+    <div
+      className="nav-avatar"
+      style={{
+        width: size,
+        height: size,
+        background: user.color || "#4F9DFF",
+        fontSize: Math.round(size * 0.38),
+      }}
+      title={user.name}
+      aria-label={`Signed in as ${user.name}`}
+    >
+      {user.initials || (user.name ? user.name[0].toUpperCase() : "?")}
+    </div>
+  );
+}
+
+// ── Landing View (public, no auth required) ───────────────────────────────────
+function LandingView({ onGetStarted, onLogin }) {
+  return (
+    <div className="landing fade-in">
+      {/* Hero */}
+      <div className="landing-hero">
+        <div className="landing-eyebrow">
+          <span>🏦</span>
+          <span>IDBI Bank · Prototype</span>
+        </div>
+        <h1 className="landing-title">
+          AI-Powered{" "}
+          <span className="landing-title-accent">MSME Financial</span>
+          <br />
+          Health Card
+        </h1>
+        <p className="landing-subtitle">
+          Explainable credit scoring for New-to-Credit &amp; New-to-Bank enterprises
+          using alternate digital data — GST, bank cash flows, UPI, EPFO, and utility
+          signals — with full auditability.
+        </p>
+        <div className="landing-cta">
+          <button className="landing-btn-primary" onClick={onGetStarted}>
+            Get Started Free →
+          </button>
+          <button className="landing-btn-secondary" onClick={onLogin}>
+            Log In
+          </button>
+        </div>
+      </div>
+
+      {/* Feature Cards */}
+      <div className="landing-features">
+        <div className="feature-card">
+          <span className="feature-icon">📊</span>
+          <div className="feature-title">Deterministic Scoring</div>
+          <p className="feature-desc">
+            A transparent, auditable 0–1000 score computed from 5 independent
+            sub-dimensions — no black-box ML, every parameter documented.
+          </p>
+        </div>
+        <div className="feature-card">
+          <span className="feature-icon">🛡️</span>
+          <div className="feature-title">Cross-Validation Engine</div>
+          <p className="feature-desc">
+            Automatic fraud detection by cross-validating GST declared turnover
+            against bank inflows and UPI actuals, with configurable penalty bands.
+          </p>
+        </div>
+        <div className="feature-card">
+          <span className="feature-icon">⚡</span>
+          <div className="feature-title">Alternate Data Sources</div>
+          <p className="feature-desc">
+            Scores built from Account Aggregator data — GST, bank statements,
+            UPI flows, EPFO contributions, and utility consumption patterns.
+          </p>
+        </div>
+        <div className="feature-card">
+          <span className="feature-icon">📋</span>
+          <div className="feature-title">Portfolio Risk View</div>
+          <p className="feature-desc">
+            Aggregate risk distribution, score histograms, recommended action
+            breakdowns, and total pipeline analytics across all applications.
+          </p>
+        </div>
+        <div className="feature-card">
+          <span className="feature-icon">🔍</span>
+          <div className="feature-title">Underwriter Summaries</div>
+          <p className="feature-desc">
+            AI-generated natural language summaries highlighting key positive
+            drivers and risk factors for each MSME application.
+          </p>
+        </div>
+        <div className="feature-card">
+          <span className="feature-icon">⚖️</span>
+          <div className="feature-title">Regulatory Compliant</div>
+          <p className="feature-desc">
+            Designed around RBI Digital Lending Directions, DPDP Act 2023,
+            and the Account Aggregator consent architecture.
+          </p>
+        </div>
+      </div>
+
+      {/* Trust strip */}
+      <div className="landing-trust">
+        <div className="trust-item"><span>🔒</span><span>Secure by design</span></div>
+        <div className="trust-item"><span>📑</span><span>RBI compliant</span></div>
+        <div className="trust-item"><span>🏛️</span><span>DPDP Act 2023</span></div>
+        <div className="trust-item"><span>🔗</span><span>AA Framework</span></div>
+        <div className="trust-item"><span>🧪</span><span>Prototype · Demo data</span></div>
+      </div>
+    </div>
+  );
+}
+
+// ── Access Gate (shown when unauthenticated user hits a protected view) ────────
+function AccessGate() {
+  const { openAuth } = useAuth();
+  return (
+    <div className="access-gate fade-in">
+      <div className="access-gate-icon">🔐</div>
+      <h2 className="access-gate-title">Authentication Required</h2>
+      <p className="access-gate-subtitle">
+        Please log in to access the MSME dashboard, portfolio, and analytics.
+      </p>
+      <button className="access-gate-btn" onClick={() => openAuth("login")}>
+        Log In to Continue
+      </button>
+      <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 8 }}>
+        Don't have an account?{" "}
+        <button
+          style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: 12, fontFamily: "var(--font-sans)", fontWeight: 600 }}
+          onClick={() => openAuth("signup")}
+        >
+          Sign up free
+        </button>
+      </p>
+    </div>
+  );
+}
+
 // ── Topbar ──────────────────────────────────────────────────────────────────
 function Topbar({ view, setView }) {
+  const { user, openAuth, logout } = useAuth();
+
   return (
     <header className="topbar">
-      <div className="topbar-logo">
+      {/* Logo — clickable, goes to home or list */}
+      <div
+        className="topbar-logo"
+        style={{ cursor: "pointer" }}
+        onClick={() => setView(user ? "list" : "home")}
+        role="link"
+        tabIndex={0}
+        onKeyDown={(e) => e.key === "Enter" && setView(user ? "list" : "home")}
+      >
         <div className="logo-icon">🏦</div>
         <span>MSME Financial Health Card</span>
       </div>
-      <nav className="topbar-nav">
-        <button className={`nav-btn ${view === "list" ? "active" : ""}`} onClick={() => setView("list")}>
-          Applications
-        </button>
-        <button className={`nav-btn ${view === "portfolio" ? "active" : ""}`} onClick={() => setView("portfolio")}>
-          Portfolio View
-        </button>
-        <button className={`nav-btn ${view === "methodology" ? "active" : ""}`} onClick={() => setView("methodology")}>
-          Methodology
-        </button>
-      </nav>
+
+      {/* Navigation — only shown when logged in */}
+      {user && (
+        <nav className="topbar-nav">
+          <button className={`nav-btn ${view === "list" ? "active" : ""}`} onClick={() => setView("list")}>
+            Applications
+          </button>
+          <button className={`nav-btn ${view === "portfolio" ? "active" : ""}`} onClick={() => setView("portfolio")}>
+            Portfolio View
+          </button>
+          <button className={`nav-btn ${view === "methodology" ? "active" : ""}`} onClick={() => setView("methodology")}>
+            Methodology
+          </button>
+        </nav>
+      )}
+
+      {/* Right side */}
       <div className="topbar-right">
         <span className="demo-badge">PROTOTYPE · DEMO DATA</span>
+
+        {user ? (
+          /* Logged-in: avatar + name + logout */
+          <div className="nav-user">
+            <div className="nav-user-info">
+              <UserAvatar user={user} />
+              <span className="nav-user-name">{user.name}</span>
+            </div>
+            <button className="btn-logout" onClick={logout} type="button">
+              Log Out
+            </button>
+          </div>
+        ) : (
+          /* Logged-out: login + signup buttons */
+          <div className="nav-auth-buttons">
+            <button className="btn-login" onClick={() => openAuth("login")} type="button">
+              Log In
+            </button>
+            <button className="btn-signup" onClick={() => openAuth("signup")} type="button">
+              Sign Up
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );
@@ -874,32 +1055,75 @@ function MethodologyView() {
 
 // ── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [view, setView] = useState("list");
+  const { user, sessionLoading, openAuth } = useAuth();
+  const [view,         setView]        = useState("home");
   const [selectedMSME, setSelectedMSME] = useState(null);
 
-  const handleSelect = (msme) => {
-    setSelectedMSME(msme);
-    setView("detail");
-  };
+  // When user logs in → auto-navigate to the dashboard list
+  useEffect(() => {
+    if (user && view === "home") setView("list");
+  }, [user]); // eslint-disable-line
 
-  const handleBack = () => {
-    setSelectedMSME(null);
-    setView("list");
+  // When user logs out → return to home, clear selection
+  useEffect(() => {
+    if (!user) {
+      setView("home");
+      setSelectedMSME(null);
+    }
+  }, [user]);
+
+  // Show a minimal loader while session is being restored from localStorage
+  if (sessionLoading) {
+    return (
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "center",
+        minHeight: "100vh", background: "var(--bg-primary)",
+      }}>
+        <span className="auth-spinner" style={{ width: 32, height: 32, borderTopColor: "var(--accent)" }} />
+      </div>
+    );
+  }
+
+  const handleSelect = (msme) => { setSelectedMSME(msme); setView("detail"); };
+  const handleBack   = ()     => { setSelectedMSME(null); setView("list"); };
+  const handleSetView = (v)   => { setSelectedMSME(null); setView(v); };
+
+  // Route renderer
+  const renderContent = () => {
+    // ── Public route ──
+    if (view === "home") {
+      return (
+        <LandingView
+          onGetStarted={() => openAuth("signup")}
+          onLogin={() => openAuth("login")}
+        />
+      );
+    }
+
+    // ── Protected routes ──
+    if (!user) return <AccessGate />;
+
+    if (view === "list" && !selectedMSME) return <MSMEListView onSelect={handleSelect} />;
+    if (view === "detail" && selectedMSME) return <MSMEDetailView msme={selectedMSME} onBack={handleBack} />;
+    if (view === "portfolio")              return <PortfolioView onSelect={handleSelect} />;
+    if (view === "methodology")            return <MethodologyView />;
+
+    // Fallback
+    return <MSMEListView onSelect={handleSelect} />;
   };
 
   return (
     <div className="app-shell">
+      {/* Auth modal — rendered at root level, portals-style */}
+      <AuthModal />
+
       <Topbar
         view={selectedMSME ? "detail" : view}
-        setView={(v) => { setSelectedMSME(null); setView(v); }}
+        setView={handleSetView}
       />
+
       <main className="main-content">
-        {view === "list" && !selectedMSME && <MSMEListView onSelect={handleSelect} />}
-        {view === "detail" && selectedMSME && (
-          <MSMEDetailView msme={selectedMSME} onBack={handleBack} />
-        )}
-        {view === "portfolio" && <PortfolioView onSelect={handleSelect} />}
-        {view === "methodology" && <MethodologyView />}
+        {renderContent()}
       </main>
     </div>
   );

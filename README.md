@@ -32,9 +32,12 @@ idbi/
     ├── vite.config.js
     ├── index.html
     └── src/
-        ├── main.jsx                   ← React entry point
-        ├── App.jsx                    ← All views: List, Detail, Portfolio, Methodology
-        ├── index.css                  ← Dark-theme financial dashboard styles
+        ├── main.jsx                   ← React entry point with AuthProvider wrapping
+        ├── App.jsx                    ← Views (Landing, List, Detail, Portfolio, Methodology) + Protected Routes
+        ├── index.css                  ← Premium Apple-inspired glassmorphism styles (with Auth UI)
+        ├── auth/
+        │   ├── AuthContext.jsx        ← Context for auth, login, signup, Google Sign-In & session persistence
+        │   └── AuthModal.jsx          ← Glassmorphism auth modal with animated sliding glider toggle
         ├── data/
         │   └── msmeData.js            ← Synthetic dataset (9 MSMEs, all risk profiles)
         └── engine/
@@ -242,3 +245,4 @@ GST | UPI | AA Bank | EPFO | Electricity
 |---|---|---|
 | July 2026 | 1.0 | Initial concept + prototype brief (README_2.md) |
 | July 2026 | 2.0 | Full working prototype: React SPA, scoring engine, explainability, 9 synthetic MSMEs, 4 dashboard views |
+| July 2026 | 2.1 | **Authentication & Design System Overhaul**: Added a secure session-persisted auth system (simulated email/password and Google Sign-In), dynamic public Landing page, custom Access Gate for protected routes, and an animated glassmorphism sliding toggle indicator for Login/Signup transitions. |
