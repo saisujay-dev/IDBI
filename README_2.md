@@ -189,3 +189,41 @@ DELIVERABLES
 ## 9. Note on the Source PRD
 
 The original PRD's Section 4.2 ("Suggested Modules") appears twice in the source document — once after the workflow diagram, and again duplicated after the Conclusion, most likely an export/copy-paste artifact. This README treats the module list as it appears the first time; the duplicate should be deleted from the source file before it's shared externally.
+
+---
+
+## 10. Implemented Prototype Enhancements (July 2026 Build)
+
+We have successfully implemented a complete **Role-Based Authentication, KYC Verification, and Loan Request Workflow** on top of the original credit scoring logic, preserving all Recharts visualizations and explainability metrics.
+
+### Key Implemented Features
+
+1. **Role-Based Access Control**:
+   - Designed a secure entry **Access Portal** when clicking **Log In**.
+   - Three distinct roles: **MSME Applicant (User)**, **Bank Employee**, and **Super Admin**.
+   - Secure routing namespace guards automatically redirect logged-in users to their respective portals.
+
+2. **Simplified Onboarding & Dual Login**:
+   - Applicants sign up using only **Full Name, Email, Mobile, and Password**. Sensitive identifiers (Aadhaar, PAN, GSTIN) are deferred to the application stage.
+   - Built a simulated **6-Digit Email OTP Overlay** (default verification code: `123456`).
+   - Supports dual-credential login (verifying using either registered Email or Mobile).
+
+3. **Applicant KYC & Alternative Data Consent**:
+   - **Pending-KYC Dashboard**: Newly registered applicants see a warning block preventing loan reviews until KYC is done.
+   - **Multi-Step KYC Form**: Clicking "Apply for Loan" triggers the verification wizard:
+     - **Step 1 (Personal ID)**: Aadhaar (12 digits) & PAN (10 chars).
+     - **Step 2 (Business Details)**: Business Name, Structure Type, Address, and GSTIN (15 chars).
+     - **Step 3 (Feeds Consent)**: Grants explicit permission to ingest monthly GST filings, UPI collection volumes, Account Aggregator ledgers, EPFO payroll, and utility payments.
+   - **Background Auto-Mapping**: Maps the applicant to the corresponding synthetic seed profile (e.g. entering seed GSTIN `08IIIII9999I9Z9` maps to *Jaipur Craft Collective*). If no match is found, defaults to `MSME-009` to generate a realistic credit scorecard.
+
+4. **Enhanced Settings Portal**:
+   - **Account**: Update profile contact parameters and change passwords.
+   - **Loan Services**: Manage and toggle DPDP data consents.
+   - **Alert Notifications**: Manage Email/SMS preferences.
+   - **Security**: Monitor active device sessions (user agents, IPs) and login history registries.
+   - **Help & Live Support**:
+     - Accordion FAQs for common underwriting questions.
+     - Prototype Live Chat answering dynamic query terms (e.g. `score`, `loan`, `revoke`).
+     - Raise Complaint forms creating reference tickets.
+     - Rating and Feedback inputs.
+   - **Prominent Logout**: Dialog overlay modal confirming log out actions.

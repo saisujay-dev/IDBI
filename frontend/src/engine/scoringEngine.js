@@ -17,13 +17,29 @@
  * >40% from bank/UPI actuals (fraud/inconsistency flag).
  */
 
-// ── Weight configuration (change here to retune globally) ──────────────────
+const getActiveWeights = () => {
+  try {
+    const config = JSON.parse(localStorage.getItem("msme_system_config"));
+    if (config && config.weights) {
+      return config.weights;
+    }
+  } catch (e) {}
+  return {
+    cashFlowStrength:      0.25,
+    revenueConsistency:    0.20,
+    complianceBehavior:    0.20,
+    operationalContinuity: 0.20,
+    financialResilience:   0.15,
+  };
+};
+
+// ── Weight configuration (dynamic getters link to Admin system config) ─────
 export const WEIGHTS = {
-  cashFlowStrength:      0.25,
-  revenueConsistency:    0.20,
-  complianceBehavior:    0.20,
-  operationalContinuity: 0.20,
-  financialResilience:   0.15,
+  get cashFlowStrength() { return getActiveWeights().cashFlowStrength; },
+  get revenueConsistency() { return getActiveWeights().revenueConsistency; },
+  get complianceBehavior() { return getActiveWeights().complianceBehavior; },
+  get operationalContinuity() { return getActiveWeights().operationalContinuity; },
+  get financialResilience() { return getActiveWeights().financialResilience; },
 };
 
 // ── Risk band thresholds (score out of 1000) ────────────────────────────────
