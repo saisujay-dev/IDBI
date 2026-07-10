@@ -13,7 +13,7 @@ import { RISK_BANDS, ACTIONS } from "./scoringEngine";
 // Driver extraction — find top positive and negative factors
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SUB_SCORE_LABELS = {
+const _SUB_SCORE_LABELS = {
   cashFlowStrength:      "Cash-Flow Strength",
   revenueConsistency:    "Revenue Consistency",
   complianceBehavior:    "Compliance Behavior",
@@ -25,8 +25,8 @@ const SUB_SCORE_LABELS = {
  * Generates specific driver strings from sub-score breakdowns.
  * Each driver is tied to a concrete data point.
  */
-export const extractDrivers = (scoredMSME, rawMSME) => {
-  const { subScores, crossValidation, dataSufficiency } = scoredMSME;
+export const extractDrivers = (scoredMSME, _rawMSME) => {
+  const { subScores, crossValidation } = scoredMSME;
   const drivers = [];
 
   // ── Cash-Flow Strength drivers ──────────────────────────────────────────
@@ -168,7 +168,7 @@ export const extractDrivers = (scoredMSME, rawMSME) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const generateUnderwriterNote = (scoredMSME, rawMSME, drivers) => {
   const { overallScore, riskBand, recommendedAction, crossValidation, dataSufficiency } = scoredMSME;
-  const band = RISK_BANDS[riskBand];
+  const _band = RISK_BANDS[riskBand];
   const action = ACTIONS[recommendedAction];
   const posDrivers = drivers.positives;
   const negDrivers = drivers.negatives;

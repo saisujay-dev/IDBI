@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "./AuthContext";
 
 // ── Icons & Spinner ──────────────────────────────────────────────────────────
@@ -86,6 +86,11 @@ export default function AuthModal() {
     }
   }, [authModal]);
 
+  const handleClose = useCallback(() => {
+    setVisible(false);
+    setTimeout(closeAuth, 260);
+  }, [closeAuth]);
+
   // Trap Escape key
   useEffect(() => {
     const handler = (e) => {
@@ -93,7 +98,7 @@ export default function AuthModal() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [authModal]);
+  }, [authModal, handleClose]);
 
   // Focus helper
   useEffect(() => {
@@ -103,11 +108,6 @@ export default function AuthModal() {
   }, [visible, activePortal, subMode]);
 
   if (!authModal) return null;
-
-  const handleClose = () => {
-    setVisible(false);
-    setTimeout(closeAuth, 260);
-  };
 
   const handleOverlayClick = (e) => {
     if (e.target === overlayRef.current) handleClose();

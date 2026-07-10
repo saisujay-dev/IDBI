@@ -30,7 +30,7 @@ import AuthModal from "./auth/AuthModal";
 import "./index.css";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-const fmt = (n) => new Intl.NumberFormat("en-IN").format(n);
+const _fmt = (n) => new Intl.NumberFormat("en-IN").format(n);
 const fmtL = (n) => `₹${(n / 100000).toFixed(1)}L`;
 const pct = (n) => `${n}%`;
 
@@ -615,8 +615,307 @@ function MSMEListView({ scoredMsmes, onSelect }) {
   );
 }
 
+const sanitizeForPDF = (str) => {
+  if (!str) return "";
+  const cleaned = str.toString()
+    .replace(/[\u2018\u2019]/g, "'")    // curly single quotes
+    .replace(/[\u201c\u201d]/g, '"')    // curly double quotes
+    .replace(/[\u2013\u2014]/g, "-")    // en/em dashes
+    .replace(/[\u2022]/g, "-")          // bullet point
+    .replace(/\u20B9/g, "Rs.");         // Rupee symbol
+
+  let result = "";
+  for (let i = 0; i < cleaned.length; i++) {
+    const code = cleaned.charCodeAt(i);
+    if ((code >= 32 && code <= 126) || code === 10 || code === 13 || code === 9) {
+      result += cleaned[i];
+    } else {
+      result += " ";
+    }
+  }
+  return result;
+};
+
+const escapePDFText = (str) => {
+  if (!str) return "";
+  const sanitized = sanitizeForPDF(str);
+  return sanitized
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)");
+};
+
+const buildAppraisalPDF = (msme, rawMSME, drivers, note, user, reportId, reportDate) => {
+  const name = msme.name || "N/A";
+  const owner = rawMSME.owner || "Meera Agarwal";
+  const sector = rawMSME.sector || "Manufacturing";
+  const location = rawMSME.location || "HQ, Mumbai";
+  const vintage = rawMSME.vintage || "5 Years";
+  const employees = rawMSME.employees || "24";
+  const udyam = rawMSME.udyam || "UDYAM-MH-12-0083124";
+  const gstin = rawMSME.gst?.gstin || rawMSME.gstin || "27AAAAA1111A1Z1";
+  const pan = rawMSME.pan || "ABCDE1234F";
+  const businessType = rawMSME.businessType || "Pvt Ltd";
+  const overallScore = msme.overallScore || 0;
+  const riskLabel = msme.riskBandConfig?.label || "Medium Risk";
+  const actionLabel = msme.actionConfig?.label || "MANUAL REVIEW REQUIRED";
+  const loanAsk = `Rs. ${((rawMSME.loanAmountRequested || 0) / 100000).toFixed(1)} Lakhs`;
+  const ratio = `${msme.loanToIncomeRatio || 0}x`;
+
+  const stream = [];
+
+  // Page 1 Border
+  stream.push("q");
+  stream.push("0.1 w");
+  stream.push("0.5 0.5 0.5 RG");
+  stream.push("20 20 555 802 re");
+  stream.push("S");
+
+  // Header background bar
+  stream.push("0.0 0.34 0.7 r g");
+  stream.push("20 770 555 52 re");
+  stream.push("f");
+  stream.push("Q");
+
+  // Header text
+  stream.push("BT");
+  stream.push("50 800 Td");
+  stream.push("1 1 1 rg");
+  stream.push("/F2 18 Tf 22 TL (IDBI BANK - CREDIT APPRAISAL DIVISION) Tj");
+  stream.push("T* /F1 9 Tf 11 TL (AI-POWERED ALTERNATE CREDIT HEALTH CARD REPORT) Tj");
+  stream.push("ET");
+
+  // Metadata block
+  stream.push("BT");
+  stream.push("380 802 Td");
+  stream.push("1 1 1 rg");
+  stream.push("/F2 9 Tf 12 TL");
+  stream.push(`(Report ID: ${escapePDFText(reportId)}) Tj`);
+  stream.push(`T* (Generated: ${escapePDFText(reportDate)}) Tj`);
+  stream.push(`T* (Underwriter: ${escapePDFText(user?.name || "Senior Underwriter")}) Tj`);
+  stream.push("ET");
+
+  // Main content (Page 1)
+  stream.push("BT");
+  stream.push("50 740 Td");
+  stream.push("0.1 0.1 0.1 rg");
+
+  // Section 1: Business Profile
+  stream.push("T* /F2 12 Tf 18 TL (1. APPLICANT & BUSINESS PROFILE) Tj");
+  stream.push("T* /F1 10 Tf 14 TL");
+  stream.push("(---------------------------------------------------------------------------------------------------------) Tj");
+  stream.push(`T* (Business Name: ${escapePDFText(name)}) Tj`);
+  stream.push(`T* (Owner / Promoter Name: ${escapePDFText(owner)}) Tj`);
+  stream.push(`T* (Sector / Industry Type: ${escapePDFText(sector)} | Vintage: ${escapePDFText(vintage)}) Tj`);
+  stream.push(`T* (Udyam Registration: ${escapePDFText(udyam)} | Employees: ${escapePDFText(employees)}) Tj`);
+  stream.push(`T* (GSTIN: ${escapePDFText(gstin)} | PAN: ${escapePDFText(pan)} | Constitution: ${escapePDFText(businessType)}) Tj`);
+  stream.push(`T* (Location/HQ Address: ${escapePDFText(location)}) Tj`);
+
+  // Section 2: Assessment summary
+  stream.push("T* T* /F2 12 Tf 18 TL (2. CREDIT HEALTH ASSESSMENT SUMMARY) Tj");
+  stream.push("T* /F1 10 Tf 14 TL");
+  stream.push("(---------------------------------------------------------------------------------------------------------) Tj");
+  stream.push(`T* (Financial Health Score: ) Tj`);
+  stream.push(`/F2 14 Tf (${overallScore} / 1000) Tj`);
+  stream.push("T* /F1 10 Tf 14 TL");
+  stream.push(`(Risk Classification: ) Tj`);
+  stream.push(`/F2 10 Tf (${escapePDFText(riskLabel)}) Tj`);
+  stream.push("T* /F1 10 Tf 14 TL");
+  stream.push(`(Recommended Action: ) Tj`);
+  stream.push(`/F2 10 Tf (${escapePDFText(actionLabel)}) Tj`);
+  stream.push("T* /F1 10 Tf 14 TL");
+  stream.push(`(Requested Loan Capital: ${escapePDFText(loanAsk)} | Loan-to-Income Ratio: ${escapePDFText(ratio)}) Tj`);
+
+  // Section 3: Telemetry Dimension breakdown
+  stream.push("T* T* /F2 12 Tf 18 TL (3. ALTERNATE TELEMETRY SCORE BREAKDOWN) Tj");
+  stream.push("T* /F1 10 Tf 14 TL");
+  stream.push("(---------------------------------------------------------------------------------------------------------) Tj");
+  stream.push("T* /F2 9 Tf 12 TL (Scoring Dimension                               Weight   Score      Risk Level) Tj");
+  stream.push("T* /F1 9 Tf 12 TL (-----------------------------------------------------------------------------------------) Tj");
+
+  Object.entries(msme.subScores).forEach(([key, val]) => {
+    const label = SUB_SCORE_NAMES[key] || key;
+    const padding = " ".repeat(Math.max(1, 45 - label.length));
+    const wt = `${(val.weight * 100).toFixed(0)}%`;
+    const sc = `${val.score} / 1000`;
+    const risk = val.score >= 700 ? "Low Risk" : val.score >= 450 ? "Medium Risk" : "High Risk";
+    stream.push(`T* (${escapePDFText(label)}${padding}${wt}      ${sc}   ${risk}) Tj`);
+  });
+
+  // Section 4: Positive and Negative Drivers
+  stream.push("T* T* /F2 12 Tf 18 TL (4. EXPLAINABILITY & CREDIT DRIVERS) Tj");
+  stream.push("T* /F1 10 Tf 14 TL");
+  stream.push("(---------------------------------------------------------------------------------------------------------) Tj");
+  stream.push("T* /F2 10 Tf 14 TL (Key Positive Factors:) Tj");
+  stream.push("/F1 9 Tf 12 TL");
+  if (drivers.positives && drivers.positives.length > 0) {
+    drivers.positives.slice(0, 3).forEach((d) => {
+      stream.push(`T* (+ ${escapePDFText(d.category)}: ${escapePDFText(d.text)}) Tj`);
+    });
+  } else {
+    stream.push("T* (+ No major positive factors identified.) Tj");
+  }
+
+  stream.push("T* T* /F2 10 Tf 14 TL (Key Risk Factors:) Tj");
+  stream.push("/F1 9 Tf 12 TL");
+  if (drivers.negatives && drivers.negatives.length > 0) {
+    drivers.negatives.slice(0, 3).forEach((d) => {
+      stream.push(`T* (- ${escapePDFText(d.category)}: ${escapePDFText(d.text)}) Tj`);
+    });
+  } else {
+    stream.push("T* (- No major risk factors identified.) Tj");
+  }
+
+  stream.push("ET");
+
+  // Page 2 Content
+  const stream2 = [];
+  stream2.push("q");
+  stream2.push("0.1 w");
+  stream2.push("0.5 0.5 0.5 RG");
+  stream2.push("20 20 555 802 re");
+  stream2.push("S");
+
+  stream2.push("0.0 0.34 0.7 r g");
+  stream2.push("20 790 555 32 re");
+  stream2.push("f");
+  stream2.push("Q");
+
+  stream2.push("BT");
+  stream2.push("50 802 Td");
+  stream2.push("1 1 1 rg");
+  stream2.push("/F2 12 Tf 14 TL (IDBI BANK - CREDIT APPRAISAL DIVISION - NARRATIVE AUDIT) Tj");
+  stream2.push("ET");
+
+  stream2.push("BT");
+  stream2.push("50 750 Td");
+  stream2.push("0.1 0.1 0.1 rg");
+
+  // Section 5: Cross validation & data sources
+  stream2.push("T* /F2 12 Tf 18 TL (5. INGESTION SUFFICIENCY & CROSS-VALIDATION FRAUD CHECKS) Tj");
+  stream2.push("T* /F1 10 Tf 14 TL");
+  stream2.push("(---------------------------------------------------------------------------------------------------------) Tj");
+  stream2.push(`T* (GST Annual Inflows: Rs. ${((msme.crossValidation?.totalGSTTurnover || 0) / 100000).toFixed(1)}L | Bank Credits: Rs. ${((msme.crossValidation?.totalBankInflow || 0) / 100000).toFixed(1)}L) Tj`);
+  stream2.push(`T* (UPI Collections: Rs. ${((msme.crossValidation?.totalUPIInflow || 0) / 100000).toFixed(1)}L | Inflow Mismatch: ${msme.crossValidation?.avgDivergence || 0}%) Tj`);
+  stream2.push(`T* (Cross-Validation Assessment: ${msme.crossValidation?.isFlagged ? "WARNING: HIGHER THAN POLICY TOLERANCE" : "VERIFIED & ALIGNED"}) Tj`);
+  if (msme.crossValidation?.isFlagged) {
+    stream2.push(`T* (  Audit Alert message: ${escapePDFText(msme.crossValidation.flagMessage)}) Tj`);
+  } else {
+    stream2.push("T* (  Audit Alert: Inflow discrepancy is within acceptable bank policy limits of 40%.) Tj");
+  }
+
+  // Data feeds checklist
+  stream2.push("T* T* /F2 10 Tf 14 TL (Data Source Feeds Ingested Checklist:) Tj");
+  stream2.push("/F1 9 Tf 12 TL");
+  if (msme.dataSufficiency && msme.dataSufficiency.sources) {
+    msme.dataSufficiency.sources.forEach((s) => {
+      stream2.push(`T* (${s.present ? "[YES]" : "[NO ]"} ${escapePDFText(s.source)}) Tj`);
+    });
+  }
+
+  // Section 6: AI Underwriter Narrative
+  stream2.push("T* T* /F2 12 Tf 18 TL (6. AI UNDERWRITING JUSTIFICATION NARRATIVE) Tj");
+  stream2.push("T* /F1 10 Tf 14 TL");
+  stream2.push("(---------------------------------------------------------------------------------------------------------) Tj");
+
+  const noteLines = [];
+  const words = (note || "").split(" ");
+  let currentLine = "";
+  words.forEach((w) => {
+    if (currentLine.length + w.length > 85) {
+      noteLines.push(currentLine);
+      currentLine = w + " ";
+    } else {
+      currentLine += w + " ";
+    }
+  });
+  if (currentLine) noteLines.push(currentLine);
+
+  stream2.push("/F1 9.5 Tf 13 TL");
+  noteLines.forEach((l) => {
+    stream2.push(`T* (${escapePDFText(l.trim())}) Tj`);
+  });
+
+  // Section 7: Legal Disclaimer
+  stream2.push("T* T* T* /F2 9 Tf 12 TL (7. REGULATORY & CREDIT POLICY DISCLAIMER) Tj");
+  stream2.push("/F1 8 Tf 10 TL");
+  stream2.push("T* (This report is dynamically generated under underwriter consent via digitized telemetry streams.) Tj");
+  stream2.push("T* (It forms part of the alternate underwriting evaluation module for IDBI Bank MSME credits.) Tj");
+  stream2.push("T* (This assessment card should be cross-referenced against standard RBI physical collateral audits,) Tj");
+  stream2.push("T* (credit bureau reports, and IDBI Bank's internal core risk framework before loan disbursement.) Tj");
+
+  stream2.push("ET");
+
+  const contentStream1 = stream.join("\n");
+  const contentStream2 = stream2.join("\n");
+
+  const catalog = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
+  const pages = "2 0 obj\n<< /Type /Pages /Kids [6 0 R 8 0 R] /Count 2 >>\nendobj\n";
+  const font1 = "3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n";
+  const font2 = "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n";
+  const resources = "5 0 obj\n<< /Font << /F1 3 0 R /F2 4 0 R >> >>\nendobj\n";
+
+  const page1 = "6 0 obj\n<< /Type /Page /Parent 2 0 R /Resources 5 0 R /MediaBox [0 0 595.28 841.89] /Contents 7 0 R >>\nendobj\n";
+  const stream1Header = `7 0 obj\n<< /Length ${contentStream1.length} >>\nstream\n`;
+  const stream1Footer = "\nendstream\nendobj\n";
+  const fullStream1 = stream1Header + contentStream1 + stream1Footer;
+
+  const page2 = "8 0 obj\n<< /Type /Page /Parent 2 0 R /Resources 5 0 R /MediaBox [0 0 595.28 841.89] /Contents 9 0 R >>\nendobj\n";
+  const stream2Header = `9 0 obj\n<< /Length ${contentStream2.length} >>\nstream\n`;
+  const stream2Footer = "\nendstream\nendobj\n";
+  const fullStream2 = stream2Header + contentStream2 + stream2Footer;
+
+  const pdfHeader = "%PDF-1.4\n";
+  let offset = pdfHeader.length;
+
+  const offsets = [];
+
+  offsets.push(offset);
+  offset += catalog.length;
+
+  offsets.push(offset);
+  offset += pages.length;
+
+  offsets.push(offset);
+  offset += font1.length;
+
+  offsets.push(offset);
+  offset += font2.length;
+
+  offsets.push(offset);
+  offset += resources.length;
+
+  offsets.push(offset);
+  offset += page1.length;
+
+  offsets.push(offset);
+  offset += fullStream1.length;
+
+  offsets.push(offset);
+  offset += page2.length;
+
+  offsets.push(offset);
+  offset += fullStream2.length;
+
+  let xref = "xref\n0 10\n0000000000 65535 f \n";
+  for (let i = 0; i < 9; i++) {
+    const off = offsets[i].toString().padStart(10, "0");
+    xref += `${off} 00000 n \n`;
+  }
+
+  const startxref = offset;
+  const trailer = `trailer\n<< /Size 10 /Root 1 0 R >>\nstartxref\n${startxref}\n%%EOF\n`;
+
+  const fullPdfString = pdfHeader + catalog + pages + font1 + font2 + resources + page1 + fullStream1 + page2 + fullStream2 + xref + trailer;
+
+  return fullPdfString;
+};
+
 // ── MSME Detail View ──────────────────────────────────────────────────────────
 function MSMEDetailView({ msme, rawDataList, onBack, backText = "Back to Applications" }) {
+  const { user } = useAuth();
+  const [downloadingReport, setDownloadingReport] = useState(false);
+
   const rawMSME = rawDataList.find((m) => m.id === msme.id) || msme;
   const drivers = extractDrivers(msme, rawMSME);
   const note = generateUnderwriterNote(msme, rawMSME, drivers);
@@ -640,6 +939,41 @@ function MSMEDetailView({ msme, rawDataList, onBack, backText = "Back to Applica
     "GST Turnover": Math.round((rawMSME.gst?.monthlyTurnover?.[i] || 0) / 1000),
     "UPI Inflow": Math.round((rawMSME.upi?.monthlyInflow?.[i] || 0) / 1000),
   }));
+
+  const handleDownloadReport = () => {
+    setDownloadingReport(true);
+    const reportId = `FHC-${msme.id}-${Math.floor(100000 + Math.random() * 899999)}`;
+    const reportDate = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+    const filename = `Financial_Health_Report_${msme.name.replace(/[^a-zA-Z0-9]/g, "_")}_${new Date().toISOString().split("T")[0]}.pdf`;
+
+    try {
+      const pdfString = buildAppraisalPDF(msme, rawMSME, drivers, note, user, reportId, reportDate);
+
+      const bytes = new Uint8Array(pdfString.length);
+      for (let i = 0; i < pdfString.length; i++) {
+        bytes[i] = pdfString.charCodeAt(i);
+      }
+
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setDownloadingReport(false);
+        alert("Report downloaded successfully");
+      }, 150);
+    } catch (err) {
+      setDownloadingReport(false);
+      alert(`Failed to generate credit report PDF: ${err.message}`);
+    }
+  };
 
   return (
     <div className="fade-in">
@@ -673,6 +1007,26 @@ function MSMEDetailView({ msme, rawDataList, onBack, backText = "Back to Applica
             >
               {msme.actionConfig.label}
             </span>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <button
+              onClick={handleDownloadReport}
+              disabled={downloadingReport}
+              className="landing-btn-primary"
+              style={{
+                padding: "8px 16px",
+                fontSize: "12px",
+                borderRadius: "8px",
+                minHeight: "auto",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+              type="button"
+            >
+              <span>{downloadingReport ? "⏳" : "📥"}</span>
+              {downloadingReport ? "Preparing..." : "Download Report"}
+            </button>
           </div>
         </div>
       </div>
@@ -1853,7 +2207,7 @@ function LoanProductsView({ user, activeLoan, setView, onSelectProduct }) {
 }
 
 // ── Multi-Step KYC & Consent Flow ──
-function KYCFormView({ user, completeKYC, selectedProduct, setView }) {
+function KYCFormView({ user: _user, completeKYC, selectedProduct, setView }) {
   const [step, setStep] = useState(1); // 1: Personal, 2: Business, 3: Consent
 
   // Step 1: Personal Verification
@@ -1868,7 +2222,7 @@ function KYCFormView({ user, completeKYC, selectedProduct, setView }) {
 
   // Request details
   const [loanAmount, setLoanAmount] = useState("1500000");
-  const [loanPurpose, setLoanPurpose] = useState(selectedProduct?.title || "Working Capital");
+  const [loanPurpose, _setLoanPurpose] = useState(selectedProduct?.title || "Working Capital");
 
   // Step 3: Consent checkboxes
   const [consentGST, setConsentGST] = useState(false);
@@ -3251,6 +3605,47 @@ function EmployeeDashboardView({ scoredMsmes, setView }) {
           </div>
         </div>
       </div>
+
+      {/* ── Active Credit Underwriting Rules Overview Card ── */}
+      <div className="card" style={{ marginTop: "24px" }}>
+        <div className="card-header" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "12px" }}>
+          <span className="card-title">Active Credit Underwriting Rules</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px", marginTop: "16px" }}>
+          <div>
+            <span style={{ display: "block", fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase" }}>Score Ranges</span>
+            <div style={{ fontSize: "13px", color: "var(--text-primary)", marginTop: "4px", lineHeight: "1.6" }}>
+              🟢 Low Risk: <strong>700–1000</strong><br />
+              🟡 Medium Risk: <strong>450–699</strong><br />
+              🔴 High Risk: <strong>0–449</strong>
+            </div>
+          </div>
+          <div>
+            <span style={{ display: "block", fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase" }}>Approval Rules</span>
+            <div style={{ fontSize: "13px", color: "var(--text-primary)", marginTop: "4px", lineHeight: "1.6" }}>
+              ✓ Auto Approve: <strong>≥ 700</strong><br />
+              ⌕ Manual Review: <strong>450–699</strong><br />
+              ✗ Auto Decline: <strong>&lt; 450</strong>
+            </div>
+          </div>
+          <div>
+            <span style={{ display: "block", fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase" }}>Telemetry History</span>
+            <div style={{ fontSize: "13px", color: "var(--text-primary)", marginTop: "4px", lineHeight: "1.6" }}>
+              GST Invoices: <strong>≥ 6 Months</strong><br />
+              UPI Inflow: <strong>≥ 6 Months</strong><br />
+              EPFO Ingestion: <strong>≥ 6 Months</strong>
+            </div>
+          </div>
+          <div>
+            <span style={{ display: "block", fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase" }}>Cross-Validation Bounds</span>
+            <div style={{ fontSize: "13px", color: "var(--text-primary)", marginTop: "4px", lineHeight: "1.6" }}>
+              Divergence Limit: <strong>&gt; 40% Mismatch</strong><br />
+              Missing Inflows: <strong>&gt; 20% Limit</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }
@@ -3332,18 +3727,89 @@ function ReportsView() {
 }
 
 // ── Employee Settings (Risk Parameters configuration) ──
+// ── Employee Settings (Risk Parameters configuration) ──
 function EmployeeSettingsView({ resetPassword, user }) {
+  const { logout } = useAuth();
+  const [activeTab, setActiveTab] = useState("account"); // "account" | "preferences" | "notifications" | "security" | "support" | "contact" | "compliance" | "about"
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  // Risk parameters
   const [lowCutoff, setLowCutoff] = useState(700);
   const [medCutoff, setMedCutoff] = useState(450);
+  const [successMsg, setSuccessMsg] = useState("");
+
+  // Detailed Cut-Off parameters
+  const [autoApproveScore, setAutoApproveScore] = useState(700);
+  const [manualReviewScore, setManualReviewScore] = useState(450);
+  const [autoRejectScore, setAutoRejectScore] = useState(400);
+
+  const [minGstMonths, setMinGstMonths] = useState(6);
+  const [minUpiMonths, setMinUpiMonths] = useState(6);
+  const [minBankMonths, setMinBankMonths] = useState(6);
+  const [minEpfoMonths, setMinEpfoMonths] = useState(6);
+  const [minUtilityMonths, setMinUtilityMonths] = useState(3);
+
+  const [gstBankMismatch, setGstBankMismatch] = useState(40);
+  const [gstUpiMismatch, setGstUpiMismatch] = useState(40);
+  const [missingDataLimit, setMissingDataLimit] = useState(20);
+
+  // Account details
+  const [profileName, setProfileName] = useState(user.name || "");
+  const [department, setDepartment] = useState("Risk Appraisal & Credit Operations");
+  const [designation, setDesignation] = useState("Senior Credit Underwriter");
+  const [branch, setBranch] = useState("IDBI Bank HQ, Mumbai");
+  const [profileSuccessMsg, setProfileSuccessMsg] = useState("");
+
+  // Change password
   const [newPass, setNewPass] = useState("");
   const [confirmPass, setConfirmPass] = useState("");
-  const [successMsg, setSuccessMsg] = useState("");
   const [passSuccessMsg, setPassSuccessMsg] = useState("");
+
+  // Preferences
+  const [prefDashboard, setPrefDashboard] = useState("employee_dashboard");
+  const [prefDensity, setPrefDensity] = useState("comfortable");
+  const [prefRecords, setPrefRecords] = useState(10);
+  const [prefTheme, setPrefTheme] = useState("dark");
+  const [prefLang, setPrefLang] = useState("English");
+  const [prefSuccessMsg, setPrefSuccessMsg] = useState("");
+
+  // Notification preferences
+  const [loanAlerts, setLoanAlerts] = useState(true);
+  const [highRiskAlerts, setHighRiskAlerts] = useState(true);
+  const [portfolioUpdates, setPortfolioUpdates] = useState(false);
+  const [emailChannels, setEmailChannels] = useState(true);
+  const [inAppChannels, setInAppChannels] = useState(true);
+  const [notifSuccessMsg, setNotifSuccessMsg] = useState("");
+
+  // Support
+  const [supportFaqActive, setSupportFaqActive] = useState(null);
+  const [ticketSubject, setTicketSubject] = useState("");
+  const [ticketCategory, setTicketCategory] = useState("API Ingestion Error");
+  const [ticketSeverity, setTicketSeverity] = useState("Medium");
+  const [ticketDesc, setTicketDesc] = useState("");
+  const [ticketSuccess, setTicketSuccess] = useState("");
+
+  const [issueType, setIssueType] = useState("UI Bug");
+  const [issueDesc, setIssueDesc] = useState("");
+  const [issueSuccess, setIssueSuccess] = useState("");
+
+  // Support live chat
+  const [supportMessages, setSupportMessages] = useState([
+    { text: "Hello! Welcome to the IDBI Internal Technical Support Desk. How can I help you resolve portal issues today?", sender: "bot", time: "Just now" }
+  ]);
+  const [supportInput, setSupportInput] = useState("");
+  const [supportTyping, setSupportTyping] = useState(false);
 
   const handleUpdateCutoffs = (e) => {
     e.preventDefault();
     setSuccessMsg("Risk policy threshold parameters updated globally!");
     setTimeout(() => setSuccessMsg(""), 3000);
+  };
+
+  const handleProfileSave = (e) => {
+    e.preventDefault();
+    setProfileSuccessMsg("Profile details updated successfully!");
+    setTimeout(() => setProfileSuccessMsg(""), 3000);
   };
 
   const handleResetPass = async (e) => {
@@ -3363,72 +3829,947 @@ function EmployeeSettingsView({ resetPassword, user }) {
     }
   };
 
+  const handleSavePreferences = (e) => {
+    e.preventDefault();
+    setPrefSuccessMsg("Work preferences saved successfully!");
+    setTimeout(() => setPrefSuccessMsg(""), 3000);
+  };
+
+  const handleSaveNotifications = (e) => {
+    e.preventDefault();
+    setNotifSuccessMsg("Notification parameters saved successfully!");
+    setTimeout(() => setNotifSuccessMsg(""), 3000);
+  };
+
+  const handleRaiseTicket = (e) => {
+    e.preventDefault();
+    if (!ticketSubject.trim() || !ticketDesc.trim()) return;
+    const ticketId = `TIC-${Math.floor(10000 + Math.random() * 89999)}`;
+    setTicketSuccess(`Support ticket raised successfully! Reference ID: ${ticketId}`);
+    setTicketSubject("");
+    setTicketDesc("");
+    setTimeout(() => setTicketSuccess(""), 4000);
+  };
+
+  const handleReportIssue = (e) => {
+    e.preventDefault();
+    if (!issueDesc.trim()) return;
+    const bugId = `BUG-${Math.floor(1000 + Math.random() * 8999)}`;
+    setIssueSuccess(`Issue reported successfully! Reference ID: ${bugId}`);
+    setIssueDesc("");
+    setTimeout(() => setIssueSuccess(""), 4000);
+  };
+
+  const handleSendSupportMessage = (e) => {
+    e.preventDefault();
+    if (!supportInput.trim()) return;
+    const userMsg = supportInput.trim();
+    setSupportMessages(curr => [...curr, { text: userMsg, sender: "user", time: "Just now" }]);
+    setSupportInput("");
+    setSupportTyping(true);
+
+    setTimeout(() => {
+      let botText = "Thank you for reporting. This request has been logged. If this is critical, please contact the IT Helpdesk directly at extension 8899.";
+      const clean = userMsg.toLowerCase();
+      if (clean.includes("database") || clean.includes("db") || clean.includes("postgres")) {
+        botText = "PostgreSQL connectivity status is monitored by the DBA team. If you are experiencing connection timeouts, please ensure your localhost database service is active and listening on port 5432.";
+      } else if (clean.includes("login") || clean.includes("auth") || clean.includes("password")) {
+        botText = "For security password resets, you can use the password update form under the 'Employee Account' tab, or contact the IT Helpdesk for manual credential override.";
+      } else if (clean.includes("scoring") || clean.includes("calculation") || clean.includes("algorithm")) {
+        botText = "The scoring engine logic is client-side in the prototype (scoringEngine.js) and DB-side in production. For score logic updates, contact the Credit Policy & Audit Committee.";
+      }
+      setSupportMessages(curr => [...curr, { text: botText, sender: "bot", time: "Just now" }]);
+      setSupportTyping(false);
+    }, 1000);
+  };
+
   return (
-    <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      <div className="grid-2" style={{ alignItems: "start" }}>
-        {/* Credit Parameters Panel */}
-        <div className="card">
-          <div className="card-header" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "12px" }}>
-            <span className="card-title">Lending Risk Cut-offs</span>
-          </div>
-
-          {successMsg && (
-            <div className="auth-alert auth-alert--success" style={{ marginTop: "12px" }}>
-              {successMsg}
-            </div>
-          )}
-
-          <form onSubmit={handleUpdateCutoffs} style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "16px" }}>
-            <div className="auth-field">
-              <label className="auth-label">Low Risk Threshold (Green Cutoff)</label>
-              <input className="auth-input" type="number" value={lowCutoff} onChange={(e) => setLowCutoff(Number(e.target.value))} />
-              <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
-                Applicants scoring at or above this value qualify for direct approval.
-              </span>
-            </div>
-
-            <div className="auth-field">
-              <label className="auth-label">Medium Risk Threshold (Amber Cutoff)</label>
-              <input className="auth-input" type="number" value={medCutoff} onChange={(e) => setMedCutoff(Number(e.target.value))} />
-              <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
-                Applicants scoring at or above this value undergo conditions review. Below this are declined.
-              </span>
-            </div>
-
-            <button className="auth-submit" type="submit">
-              Save Policy Parameters
+    <div className="settings-container fade-in" style={{ display: "flex", gap: "24px", minHeight: "680px", flexWrap: "wrap" }}>
+      
+      {/* ── Left Sidebar Navigation ── */}
+      <div 
+        className="card" 
+        style={{ 
+          flex: "1 1 240px", 
+          padding: "16px", 
+          display: "flex", 
+          flexDirection: "column", 
+          justifyContent: "space-between",
+          minWidth: "220px",
+          background: "var(--bg-card)",
+          border: "1px solid var(--bg-border)",
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          <h2 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "1px", padding: "8px 10px", marginBottom: "10px" }}>
+            Settings Menu
+          </h2>
+          
+          {[
+            { id: "account", label: "👤 Employee Account" },
+            { id: "preferences", label: "⚙️ Work Preferences" },
+            { id: "notifications", label: "🔔 Alert Notifications" },
+            { id: "security", label: "🔒 Security Settings" },
+            { id: "support", label: "💬 Help & Support" },
+            { id: "contact", label: "📞 Contact Info" },
+            { id: "compliance", label: "📜 Compliance & Law" },
+            { id: "about", label: "ℹ️ About System" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                width: "100%",
+                padding: "10px 14px",
+                borderRadius: "10px",
+                border: "none",
+                background: activeTab === tab.id ? "var(--accent)" : "none",
+                color: activeTab === tab.id ? "#fff" : "var(--text-secondary)",
+                textAlign: "left",
+                cursor: "pointer",
+                fontWeight: activeTab === tab.id ? 600 : 400,
+                transition: "all 0.2s ease",
+                fontSize: "13px",
+              }}
+              className="settings-nav-btn"
+            >
+              {tab.label}
             </button>
-          </form>
+          ))}
         </div>
 
-        {/* Change Portal Password */}
-        <div className="card">
-          <div className="card-header" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "12px" }}>
-            <span className="card-title">Change Portal Password</span>
-          </div>
-
-          {passSuccessMsg && (
-            <div className="auth-alert auth-alert--success" style={{ marginTop: "12px" }}>
-              {passSuccessMsg}
-            </div>
-          )}
-
-          <form onSubmit={handleResetPass} style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "16px" }}>
-            <div className="auth-field">
-              <label className="auth-label">New Password</label>
-              <input className="auth-input" type="password" value={newPass} onChange={(e) => setNewPass(e.target.value)} required />
-            </div>
-            <div className="auth-field">
-              <label className="auth-label">Confirm Password</label>
-              <input className="auth-input" type="password" value={confirmPass} onChange={(e) => setConfirmPass(e.target.value)} required />
-            </div>
-
-            <button className="auth-submit" type="submit">
-              Update Portal Password
-            </button>
-          </form>
-        </div>
+        {/* Prominent Logout Button */}
+        <button
+          onClick={() => setShowLogoutConfirm(true)}
+          style={{
+            marginTop: "30px",
+            width: "100%",
+            padding: "12px",
+            borderRadius: "10px",
+            border: "1px solid rgba(255, 69, 58, 0.4)",
+            background: "rgba(255, 69, 58, 0.12)",
+            color: "#FF453A",
+            cursor: "pointer",
+            fontWeight: "bold",
+            transition: "all 0.2s ease",
+            fontSize: "13px",
+          }}
+          className="settings-logout-btn"
+          type="button"
+        >
+          🚪 Log Out Account
+        </button>
       </div>
+
+      {/* ── Right Content Details Panel ── */}
+      <div className="card" style={{ flex: "3 1 500px", padding: "24px", minWidth: "300px" }}>
+        
+        {/* ── SECTION: EMPLOYEE ACCOUNT ── */}
+        {activeTab === "account" && (
+          <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+            <div>
+              <h3 style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "4px" }}>Employee Account</h3>
+              <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>View and edit your official banking underwriter credentials.</p>
+            </div>
+            
+            {/* View Profile Card */}
+            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid var(--bg-border)", padding: "16px", borderRadius: "12px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
+              <div>
+                <span style={{ display: "block", fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase" }}>Employee ID</span>
+                <strong style={{ fontSize: "14px", color: "var(--text-primary)" }}>{user.id}</strong>
+              </div>
+              <div>
+                <span style={{ display: "block", fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase" }}>Official Email</span>
+                <strong style={{ fontSize: "14px", color: "var(--text-primary)" }}>{user.email}</strong>
+              </div>
+              <div>
+                <span style={{ display: "block", fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase" }}>Current Department</span>
+                <strong style={{ fontSize: "14px", color: "var(--text-primary)" }}>{department}</strong>
+              </div>
+              <div>
+                <span style={{ display: "block", fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase" }}>Current Designation</span>
+                <strong style={{ fontSize: "14px", color: "var(--text-primary)" }}>{designation}</strong>
+              </div>
+              <div>
+                <span style={{ display: "block", fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase" }}>Branch Location</span>
+                <strong style={{ fontSize: "14px", color: "var(--text-primary)" }}>{branch}</strong>
+              </div>
+            </div>
+
+            {/* Edit Profile Form */}
+            <form onSubmit={handleProfileSave} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <h4 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", borderBottom: "1px solid var(--bg-border)", paddingBottom: "8px", margin: "8px 0 0 0" }}>Edit Profile Details</h4>
+              
+              {profileSuccessMsg && (
+                <div className="auth-alert auth-alert--success">
+                  {profileSuccessMsg}
+                </div>
+              )}
+
+              <div className="grid-2">
+                <div className="auth-field">
+                  <label className="auth-label">Full Name</label>
+                  <input className="auth-input" type="text" value={profileName} onChange={(e) => setProfileName(e.target.value)} required />
+                </div>
+                <div className="auth-field">
+                  <label className="auth-label">Department</label>
+                  <input className="auth-input" type="text" value={department} onChange={(e) => setDepartment(e.target.value)} required />
+                </div>
+                <div className="auth-field">
+                  <label className="auth-label">Designation</label>
+                  <input className="auth-input" type="text" value={designation} onChange={(e) => setDesignation(e.target.value)} required />
+                </div>
+                <div className="auth-field">
+                  <label className="auth-label">Branch Office</label>
+                  <input className="auth-input" type="text" value={branch} onChange={(e) => setBranch(e.target.value)} required />
+                </div>
+              </div>
+              <button className="auth-submit" style={{ width: "fit-content", padding: "10px 24px" }} type="submit">
+                Save Profile Changes
+              </button>
+            </form>
+
+            <div className="section-divider" style={{ margin: "16px 0" }} />
+
+            {/* Change Portal Password Form */}
+            <form onSubmit={handleResetPass} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <h4 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", borderBottom: "1px solid var(--bg-border)", paddingBottom: "8px", margin: 0 }}>Change Portal Password</h4>
+              
+              {passSuccessMsg && (
+                <div className="auth-alert auth-alert--success">
+                  {passSuccessMsg}
+                </div>
+              )}
+
+              <div className="grid-2">
+                <div className="auth-field">
+                  <label className="auth-label">New Password</label>
+                  <input className="auth-input" type="password" value={newPass} onChange={(e) => setNewPass(e.target.value)} required />
+                </div>
+                <div className="auth-field">
+                  <label className="auth-label">Confirm Password</label>
+                  <input className="auth-input" type="password" value={confirmPass} onChange={(e) => setConfirmPass(e.target.value)} required />
+                </div>
+              </div>
+              <button className="auth-submit" style={{ width: "fit-content", padding: "10px 24px" }} type="submit">
+                Update Portal Password
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* ── SECTION: WORK PREFERENCES & POLICY PARAMETERS ── */}
+        {activeTab === "preferences" && (
+          <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+            <div>
+              <h3 style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "4px" }}>Cut-off Parameters & Policy</h3>
+              <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>Manage automated underwriting thresholds, ingestion specifications, and risk weights.</p>
+            </div>
+
+            {/* Credit Parameters Panel */}
+            <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--bg-border)", padding: "20px", borderRadius: "12px", display: "flex", flexDirection: "column", gap: "20px" }}>
+              <h4 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", borderBottom: "1px solid var(--bg-border)", paddingBottom: "8px", margin: 0 }}>Lending Policy Configurator</h4>
+              
+              {successMsg && (
+                <div className="auth-alert auth-alert--success">
+                  {successMsg}
+                </div>
+              )}
+
+              <form onSubmit={handleUpdateCutoffs} style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+                
+                {/* 1. Financial Health Score Thresholds */}
+                <div>
+                  <h5 style={{ fontSize: "12.5px", fontWeight: 600, color: "var(--accent-light)", margin: "0 0 12px 0" }}>1. Financial Health Score Thresholds</h5>
+                  <div className="grid-2">
+                    <div className="auth-field">
+                      <label className="auth-label">Low Risk Cut-off (Green Zone)</label>
+                      <input className="auth-input" type="number" min={0} max={1000} value={lowCutoff} onChange={(e) => setLowCutoff(Number(e.target.value))} />
+                      <span style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "4px" }}>Score range: {lowCutoff} to 1000</span>
+                    </div>
+                    <div className="auth-field">
+                      <label className="auth-label">Medium Risk Cut-off (Amber Zone)</label>
+                      <input className="auth-input" type="number" min={0} max={1000} value={medCutoff} onChange={(e) => setMedCutoff(Number(e.target.value))} />
+                      <span style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "4px" }}>Score range: {medCutoff} to {lowCutoff - 1}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Approval Rules */}
+                <div>
+                  <h5 style={{ fontSize: "12.5px", fontWeight: 600, color: "var(--accent-light)", margin: "0 0 12px 0" }}>2. Approval Decision Boundaries</h5>
+                  <div className="grid-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "16px" }}>
+                    <div className="auth-field">
+                      <label className="auth-label">Auto-Approve Score Limit</label>
+                      <input className="auth-input" type="number" min={0} max={1000} value={autoApproveScore} onChange={(e) => setAutoApproveScore(Number(e.target.value))} />
+                    </div>
+                    <div className="auth-field">
+                      <label className="auth-label">Manual Review Score Limit</label>
+                      <input className="auth-input" type="number" min={0} max={1000} value={manualReviewScore} onChange={(e) => setManualReviewScore(Number(e.target.value))} />
+                    </div>
+                    <div className="auth-field">
+                      <label className="auth-label">Auto-Decline Score Limit</label>
+                      <input className="auth-input" type="number" min={0} max={1000} value={autoRejectScore} onChange={(e) => setAutoRejectScore(Number(e.target.value))} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Alternate Data Requirements */}
+                <div>
+                  <h5 style={{ fontSize: "12.5px", fontWeight: 600, color: "var(--accent-light)", margin: "0 0 12px 0" }}>3. Alternate Ingestion Feeds Requirements</h5>
+                  <div className="grid-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "16px" }}>
+                    <div className="auth-field">
+                      <label className="auth-label">Minimum GST History</label>
+                      <select className="auth-input" style={{ background: "var(--bg-input)", color: "var(--text-primary)" }} value={minGstMonths} onChange={(e) => setMinGstMonths(Number(e.target.value))}>
+                        <option value={3}>3 Months</option>
+                        <option value={6}>6 Months</option>
+                        <option value={12}>12 Months</option>
+                      </select>
+                    </div>
+                    <div className="auth-field">
+                      <label className="auth-label">Minimum UPI Inflow History</label>
+                      <select className="auth-input" style={{ background: "var(--bg-input)", color: "var(--text-primary)" }} value={minUpiMonths} onChange={(e) => setMinUpiMonths(Number(e.target.value))}>
+                        <option value={3}>3 Months</option>
+                        <option value={6}>6 Months</option>
+                        <option value={12}>12 Months</option>
+                      </select>
+                    </div>
+                    <div className="auth-field">
+                      <label className="auth-label">Minimum Bank AA History</label>
+                      <select className="auth-input" style={{ background: "var(--bg-input)", color: "var(--text-primary)" }} value={minBankMonths} onChange={(e) => setMinBankMonths(Number(e.target.value))}>
+                        <option value={3}>3 Months</option>
+                        <option value={6}>6 Months</option>
+                        <option value={12}>12 Months</option>
+                      </select>
+                    </div>
+                    <div className="auth-field">
+                      <label className="auth-label">Minimum EPFO History</label>
+                      <select className="auth-input" style={{ background: "var(--bg-input)", color: "var(--text-primary)" }} value={minEpfoMonths} onChange={(e) => setMinEpfoMonths(Number(e.target.value))}>
+                        <option value={3}>3 Months</option>
+                        <option value={6}>6 Months</option>
+                        <option value={12}>12 Months</option>
+                      </select>
+                    </div>
+                    <div className="auth-field">
+                      <label className="auth-label">Minimum Utility Feeds</label>
+                      <select className="auth-input" style={{ background: "var(--bg-input)", color: "var(--text-primary)" }} value={minUtilityMonths} onChange={(e) => setMinUtilityMonths(Number(e.target.value))}>
+                        <option value={3}>3 Months</option>
+                        <option value={6}>6 Months</option>
+                        <option value={12}>12 Months</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Cross Validation Rules */}
+                <div>
+                  <h5 style={{ fontSize: "12.5px", fontWeight: 600, color: "var(--accent-light)", margin: "0 0 12px 0" }}>4. Cross-Validation Fraud Rules</h5>
+                  <div className="grid-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "16px" }}>
+                    <div className="auth-field">
+                      <label className="auth-label">GST vs Bank Mismatch Limit</label>
+                      <select className="auth-input" style={{ background: "var(--bg-input)", color: "var(--text-primary)" }} value={gstBankMismatch} onChange={(e) => setGstBankMismatch(Number(e.target.value))}>
+                        <option value={20}>20% Divergence</option>
+                        <option value={40}>40% Divergence (Policy)</option>
+                        <option value={60}>60% Divergence</option>
+                      </select>
+                    </div>
+                    <div className="auth-field">
+                      <label className="auth-label">GST vs UPI Collection Limit</label>
+                      <select className="auth-input" style={{ background: "var(--bg-input)", color: "var(--text-primary)" }} value={gstUpiMismatch} onChange={(e) => setGstUpiMismatch(Number(e.target.value))}>
+                        <option value={20}>20% Divergence</option>
+                        <option value={40}>40% Divergence (Policy)</option>
+                        <option value={60}>60% Divergence</option>
+                      </select>
+                    </div>
+                    <div className="auth-field">
+                      <label className="auth-label">Missing Data Month Threshold</label>
+                      <select className="auth-input" style={{ background: "var(--bg-input)", color: "var(--text-primary)" }} value={missingDataLimit} onChange={(e) => setMissingDataLimit(Number(e.target.value))}>
+                        <option value={10}>10% Max Missing</option>
+                        <option value={20}>20% Max Missing (Policy)</option>
+                        <option value={40}>40% Max Missing</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5. Risk Weightage (Read Only) */}
+                <div>
+                  <h5 style={{ fontSize: "12.5px", fontWeight: 600, color: "var(--accent-light)", margin: "0 0 12px 0" }}>5. AI Credit Scoring Dimensions Weights (Read-Only)</h5>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "12px", background: "rgba(255,255,255,0.01)", border: "1px solid var(--bg-border)", padding: "12px", borderRadius: "8px" }}>
+                    <div style={{ textAlign: "center" }}>
+                      <span style={{ display: "block", fontSize: "10px", color: "var(--text-muted)" }}>Cash Flow</span>
+                      <strong style={{ fontSize: "13px", color: "var(--text-primary)" }}>25% weight</strong>
+                    </div>
+                    <div style={{ textAlign: "center", borderLeft: "1px solid var(--bg-border)" }}>
+                      <span style={{ display: "block", fontSize: "10px", color: "var(--text-muted)" }}>Revenue Consistency</span>
+                      <strong style={{ fontSize: "13px", color: "var(--text-primary)" }}>20% weight</strong>
+                    </div>
+                    <div style={{ textAlign: "center", borderLeft: "1px solid var(--bg-border)" }}>
+                      <span style={{ display: "block", fontSize: "10px", color: "var(--text-muted)" }}>Compliance</span>
+                      <strong style={{ fontSize: "13px", color: "var(--text-primary)" }}>20% weight</strong>
+                    </div>
+                    <div style={{ textAlign: "center", borderLeft: "1px solid var(--bg-border)" }}>
+                      <span style={{ display: "block", fontSize: "10px", color: "var(--text-muted)" }}>Operations</span>
+                      <strong style={{ fontSize: "13px", color: "var(--text-primary)" }}>20% weight</strong>
+                    </div>
+                    <div style={{ textAlign: "center", borderLeft: "1px solid var(--bg-border)" }}>
+                      <span style={{ display: "block", fontSize: "10px", color: "var(--text-muted)" }}>Resilience</span>
+                      <strong style={{ fontSize: "13px", color: "var(--text-primary)" }}>15% weight</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <button className="auth-submit" style={{ width: "fit-content", padding: "10px 24px" }} type="submit">
+                  Save Underwriting Policy Rules
+                </button>
+              </form>
+            </div>
+
+            {/* Work Preference Defaults */}
+            <form onSubmit={handleSavePreferences} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <h4 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", borderBottom: "1px solid var(--bg-border)", paddingBottom: "8px", margin: "8px 0 0 0" }}>Portal Customization</h4>
+              
+              {prefSuccessMsg && (
+                <div className="auth-alert auth-alert--success">
+                  {prefSuccessMsg}
+                </div>
+              )}
+
+              <div className="grid-2">
+                <div className="auth-field">
+                  <label className="auth-label">Default Dashboard View</label>
+                  <select className="auth-input" style={{ background: "var(--bg-input)", color: "var(--text-primary)" }} value={prefDashboard} onChange={(e) => setPrefDashboard(e.target.value)}>
+                    <option value="employee_dashboard">Employee Stats Dashboard</option>
+                    <option value="list">MSME Applications List</option>
+                    <option value="portfolio">Portfolio Analytics</option>
+                  </select>
+                </div>
+
+                <div className="auth-field">
+                  <label className="auth-label">Table Density</label>
+                  <select className="auth-input" style={{ background: "var(--bg-input)", color: "var(--text-primary)" }} value={prefDensity} onChange={(e) => setPrefDensity(e.target.value)}>
+                    <option value="comfortable">Comfortable (Standard)</option>
+                    <option value="compact">Compact (Dense Data)</option>
+                  </select>
+                </div>
+
+                <div className="auth-field">
+                  <label className="auth-label">Records Per Page</label>
+                  <select className="auth-input" style={{ background: "var(--bg-input)", color: "var(--text-primary)" }} value={prefRecords} onChange={(e) => setPrefRecords(Number(e.target.value))}>
+                    <option value={5}>5 records</option>
+                    <option value={10}>10 records</option>
+                    <option value={20}>20 records</option>
+                    <option value={50}>50 records</option>
+                  </select>
+                </div>
+
+                <div className="auth-field">
+                  <label className="auth-label">Theme Preference</label>
+                  <select className="auth-input" style={{ background: "var(--bg-input)", color: "var(--text-primary)" }} value={prefTheme} onChange={(e) => setPrefTheme(e.target.value)}>
+                    <option value="dark">IDBI Obsidian Dark (Default)</option>
+                    <option value="light">IDBI Ice Light (Unsupported in Prototype)</option>
+                    <option value="system">Follow System Settings</option>
+                  </select>
+                </div>
+
+                <div className="auth-field">
+                  <label className="auth-label">Language Selection (Prototype)</label>
+                  <select className="auth-input" style={{ background: "var(--bg-input)", color: "var(--text-primary)" }} value={prefLang} onChange={(e) => setPrefLang(e.target.value)}>
+                    <option value="English">English (IN)</option>
+                    <option value="Hindi">हिन्दी (Hindi)</option>
+                    <option value="Marathi">मराठी (Marathi)</option>
+                    <option value="Tamil">தமிழ் (Tamil)</option>
+                    <option value="Gujarati">ગુજરાતી (Gujarati)</option>
+                  </select>
+                </div>
+              </div>
+
+              <button className="auth-submit" style={{ width: "fit-content", padding: "10px 24px" }} type="submit">
+                Save Preferences
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* ── SECTION: NOTIFICATIONS ── */}
+        {activeTab === "notifications" && (
+          <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+            <div>
+              <h3 style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "4px" }}>Alert Notifications</h3>
+              <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>Choose which underwriting signals and system alerts to receive.</p>
+            </div>
+
+            <form onSubmit={handleSaveNotifications} style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+              {notifSuccessMsg && (
+                <div className="auth-alert auth-alert--success">
+                  {notifSuccessMsg}
+                </div>
+              )}
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <h4 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", borderBottom: "1px solid var(--bg-border)", paddingBottom: "8px", margin: 0 }}>Appraisal Signal Types</h4>
+                
+                <div style={{ display: "flex", alignItems: "start", gap: "12px", background: "rgba(255,255,255,0.02)", padding: "12px", borderRadius: "8px", border: "1px solid var(--bg-border)" }}>
+                  <input type="checkbox" id="loanAlerts" checked={loanAlerts} onChange={(e) => setLoanAlerts(e.target.checked)} style={{ marginTop: "4px", width: "16px", height: "16px", cursor: "pointer" }} />
+                  <div>
+                    <label htmlFor="loanAlerts" style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: "13.5px", cursor: "pointer" }}>Loan Application Alerts</label>
+                    <span style={{ display: "block", fontSize: "11px", color: "var(--text-muted)" }}>Receive instant notifications when new MSMEs submit credit requests.</span>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "start", gap: "12px", background: "rgba(255,255,255,0.02)", padding: "12px", borderRadius: "8px", border: "1px solid var(--bg-border)" }}>
+                  <input type="checkbox" id="highRiskAlerts" checked={highRiskAlerts} onChange={(e) => setHighRiskAlerts(e.target.checked)} style={{ marginTop: "4px", width: "16px", height: "16px", cursor: "pointer" }} />
+                  <div>
+                    <label htmlFor="highRiskAlerts" style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: "13.5px", cursor: "pointer" }}>High-Risk MSME Alerts</label>
+                    <span style={{ display: "block", fontSize: "11px", color: "var(--text-muted)" }}>Flag applicants with high-risk band placement (overall score &lt; 450) or GSTIN divergence warnings immediately.</span>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "start", gap: "12px", background: "rgba(255,255,255,0.02)", padding: "12px", borderRadius: "8px", border: "1px solid var(--bg-border)" }}>
+                  <input type="checkbox" id="portfolioUpdates" checked={portfolioUpdates} onChange={(e) => setPortfolioUpdates(e.target.checked)} style={{ marginTop: "4px", width: "16px", height: "16px", cursor: "pointer" }} />
+                  <div>
+                    <label htmlFor="portfolioUpdates" style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: "13.5px", cursor: "pointer" }}>Portfolio Update Notifications</label>
+                    <span style={{ display: "block", fontSize: "11px", color: "var(--text-muted)" }}>Receive weekly aggregated summaries on overall branch delinquency ratios and approval volumes.</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "8px" }}>
+                <h4 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", borderBottom: "1px solid var(--bg-border)", paddingBottom: "8px", margin: 0 }}>Delivery Channels</h4>
+
+                <div style={{ display: "flex", gap: "32px", background: "rgba(255,255,255,0.02)", padding: "16px", borderRadius: "8px", border: "1px solid var(--bg-border)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <input type="checkbox" id="emailChannels" checked={emailChannels} onChange={(e) => setEmailChannels(e.target.checked)} style={{ width: "16px", height: "16px", cursor: "pointer" }} />
+                    <label htmlFor="emailChannels" style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: "13px", cursor: "pointer" }}>Official Email Channel</label>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <input type="checkbox" id="inAppChannels" checked={inAppChannels} onChange={(e) => setInAppChannels(e.target.checked)} style={{ width: "16px", height: "16px", cursor: "pointer" }} />
+                    <label htmlFor="inAppChannels" style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: "13px", cursor: "pointer" }}>In-Portal Notifications</label>
+                  </div>
+                </div>
+              </div>
+
+              <button className="auth-submit" style={{ width: "fit-content", padding: "10px 24px", marginTop: "10px" }} type="submit">
+                Save Alert Rules
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* ── SECTION: SECURITY ── */}
+        {activeTab === "security" && (
+          <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+            <div>
+              <h3 style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "4px" }}>Security Settings</h3>
+              <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>Monitor active login sessions, connection status, and internal compliance bounds.</p>
+            </div>
+
+            {/* Active Session Info */}
+            <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--bg-border)", padding: "16px", borderRadius: "10px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                <h4 style={{ fontSize: "13.5px", fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>Active Login Session</h4>
+                <span className="risk-badge LOW" style={{ fontSize: "9px" }}>Current Session</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", fontSize: "12px", color: "var(--text-secondary)" }}>
+                <div>IP Address: <strong style={{ color: "var(--text-primary)" }}>192.168.1.144</strong></div>
+                <div>User Agent: <strong style={{ color: "var(--text-primary)" }}>Chrome v124 (Windows 11)</strong></div>
+                <div>Location: <strong style={{ color: "var(--text-primary)" }}>Mumbai, India</strong></div>
+                <div>Session Timeout: <strong style={{ color: "var(--text-primary)" }}>60 Minutes (Inactivity)</strong></div>
+              </div>
+            </div>
+
+            {/* Connected Devices */}
+            <div>
+              <h4 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", borderBottom: "1px solid var(--bg-border)", paddingBottom: "8px", margin: "0 0 12px 0" }}>Connected Devices (Prototype)</h4>
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {[
+                  { name: "Chrome on Windows 11", sub: "192.168.1.144 · Current Session", action: "Current", active: true },
+                  { name: "Safari on iPad Pro", sub: "192.168.1.205 · Active 2 hours ago", action: "Revoke", active: false },
+                ].map((dev, idx) => (
+                  <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(255,255,255,0.01)", border: "1px solid var(--bg-border)", padding: "10px 14px", borderRadius: "8px" }}>
+                    <div>
+                      <strong style={{ fontSize: "13px", color: "var(--text-primary)" }}>{dev.name}</strong>
+                      <span style={{ display: "block", fontSize: "11px", color: "var(--text-muted)" }}>{dev.sub}</span>
+                    </div>
+                    {dev.active ? (
+                      <span style={{ fontSize: "11px", color: "var(--risk-low-color)", fontWeight: 600 }}>Active Now</span>
+                    ) : (
+                      <button className="landing-btn-secondary" style={{ padding: "4px 8px", fontSize: "11px", borderRadius: "4px" }} onClick={() => alert("Device session revoked successfully.")}>{dev.action}</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Login History */}
+            <div>
+              <h4 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", borderBottom: "1px solid var(--bg-border)", paddingBottom: "8px", margin: "0 0 12px 0" }}>Login History (Prototype)</h4>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", textAlign: "left" }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid var(--bg-border)" }}>
+                    <th style={{ padding: "8px 4px", color: "var(--text-muted)" }}>Date & Time</th>
+                    <th style={{ padding: "8px 4px", color: "var(--text-muted)" }}>Status</th>
+                    <th style={{ padding: "8px 4px", color: "var(--text-muted)" }}>IP / Location</th>
+                    <th style={{ padding: "8px 4px", color: "var(--text-muted)" }}>Device</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style={{ borderBottom: "1px solid var(--bg-border)", opacity: 0.95 }}>
+                    <td style={{ padding: "8px 4px" }}>Jul 10, 2026 10:15 PM</td>
+                    <td style={{ padding: "8px 4px", color: "var(--risk-low-color)" }}>Success</td>
+                    <td style={{ padding: "8px 4px" }}>192.168.1.144 / Mumbai</td>
+                    <td style={{ padding: "8px 4px" }}>Chrome / Windows</td>
+                  </tr>
+                  <tr style={{ borderBottom: "1px solid var(--bg-border)", opacity: 0.85 }}>
+                    <td style={{ padding: "8px 4px" }}>Jul 09, 2026 09:30 AM</td>
+                    <td style={{ padding: "8px 4px", color: "var(--risk-low-color)" }}>Success</td>
+                    <td style={{ padding: "8px 4px" }}>192.168.1.144 / Mumbai</td>
+                    <td style={{ padding: "8px 4px" }}>Chrome / Windows</td>
+                  </tr>
+                  <tr style={{ borderBottom: "1px solid var(--bg-border)", opacity: 0.75 }}>
+                    <td style={{ padding: "8px 4px" }}>Jul 08, 2026 02:45 PM</td>
+                    <td style={{ padding: "8px 4px", color: "var(--risk-low-color)" }}>Success</td>
+                    <td style={{ padding: "8px 4px" }}>192.168.1.205 / Pune</td>
+                    <td style={{ padding: "8px 4px" }}>Safari / iPad</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Privacy Guidelines */}
+            <div style={{ background: "rgba(255, 69, 58, 0.05)", border: "1px solid rgba(255, 69, 58, 0.15)", padding: "16px", borderRadius: "10px", marginTop: "8px" }}>
+              <h5 style={{ color: "#FF453A", fontWeight: 700, fontSize: "13px", margin: "0 0 6px 0" }}>⚠️ Internal Security Policy Guidelines</h5>
+              <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "11.5px", color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                <li>Do not share your credit analyst login credentials or API keys.</li>
+                <li>Lock your underwriting terminal (Win + L) when leaving your workspace.</li>
+                <li>Passwords are subjected to a mandatory rotation every 90 days.</li>
+                <li>Contact the IT Security Response team immediately if you suspect unauthorized access.</li>
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {/* ── SECTION: SUPPORT ── */}
+        {activeTab === "support" && (
+          <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+            <div>
+              <h3 style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "4px" }}>Help & Support</h3>
+              <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>Access credit user manuals, search FAQs, or report portal technical bugs.</p>
+            </div>
+
+            {/* Help FAQs Accordion */}
+            <div>
+              <h4 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", borderBottom: "1px solid var(--bg-border)", paddingBottom: "8px", margin: "0 0 12px 0" }}>Frequently Asked Questions</h4>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                {[
+                  {
+                    q: "How do I override or adjust credit risk cutoff scores?",
+                    a: "Go to the 'Work Preferences' tab. Enter the desired threshold values for Low and Medium Risk bands and click 'Save Policy Parameters'. Note that changes reflect dynamically for all loaded scorecards."
+                  },
+                  {
+                    q: "What causes a Cross-Validation Flag?",
+                    a: "The scoring engine compares declared GST turnover against bank statement credit entries and UPI collection volumes. If the divergence exceeds 40%, the system flags the MSME automatically for manual audit."
+                  },
+                  {
+                    q: "How does the AI explainability summary generate?",
+                    a: "The portal uses the Hugging Face Inference API to pass calculated scoring dimensions to a Mistral-7B-Instruct model, generating a plain-language credit report. If rate limits are met, a local backup explanation takes over."
+                  }
+                ].map((faq, idx) => (
+                  <div key={idx} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--bg-border)", borderRadius: "8px" }}>
+                    <button
+                      onClick={() => setSupportFaqActive(supportFaqActive === idx ? null : idx)}
+                      style={{ width: "100%", padding: "12px 16px", background: "none", border: "none", color: "var(--text-primary)", textAlign: "left", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}
+                    >
+                      <span>{faq.q}</span>
+                      <span>{supportFaqActive === idx ? "−" : "+"}</span>
+                    </button>
+                    {supportFaqActive === idx && (
+                      <div style={{ padding: "0 16px 12px 16px", fontSize: "12px", color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                        {faq.a}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* User Manual Download */}
+            <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--bg-border)", padding: "16px", borderRadius: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <strong style={{ display: "block", fontSize: "13.5px", color: "var(--text-primary)" }}>Underwriting Operations Manual</strong>
+                <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Download official guide on credit health evaluation workflows.</span>
+              </div>
+              <button className="landing-btn-secondary" style={{ padding: "8px 16px", fontSize: "12px", borderRadius: "6px" }} onClick={() => alert("Downloading manual prototype... (In production, this downloads the PDF operations handbook.)")}>Download PDF</button>
+            </div>
+
+            {/* Live Support Chat */}
+            <div>
+              <h4 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", borderBottom: "1px solid var(--bg-border)", paddingBottom: "8px", margin: "8px 0 12px 0" }}>IT Helpdesk Live Chat (Prototype)</h4>
+              <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--bg-border)", borderRadius: "10px", display: "flex", flexDirection: "column", height: "260px" }}>
+                <div style={{ flex: 1, padding: "12px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {supportMessages.map((msg, idx) => (
+                    <div key={idx} style={{ alignSelf: msg.sender === "user" ? "flex-end" : "flex-start", background: msg.sender === "user" ? "var(--accent)" : "rgba(255,255,255,0.05)", color: "#fff", padding: "8px 12px", borderRadius: "8px", maxWidth: "80%", fontSize: "12px" }}>
+                      <div>{msg.text}</div>
+                      <div style={{ fontSize: "9px", color: "rgba(255,255,255,0.4)", textAlign: "right", marginTop: "4px" }}>{msg.time}</div>
+                    </div>
+                  ))}
+                  {supportTyping && <div style={{ fontSize: "11px", color: "var(--text-muted)", fontStyle: "italic", marginLeft: "4px" }}>IT Assistant is typing...</div>}
+                </div>
+                <form onSubmit={handleSendSupportMessage} style={{ display: "flex", borderTop: "1px solid var(--bg-border)", padding: "8px" }}>
+                  <input className="auth-input" style={{ flex: 1, borderRadius: "6px 0 0 6px", height: "36px", padding: "0 10px", borderRight: "none" }} placeholder="Type support query (e.g. database, password)..." value={supportInput} onChange={(e) => setSupportInput(e.target.value)} />
+                  <button className="auth-submit" style={{ borderRadius: "0 6px 6px 0", height: "36px", width: "70px", padding: 0 }} type="submit">Send</button>
+                </form>
+              </div>
+            </div>
+
+            {/* Raise Support Ticket Form */}
+            <div style={{ background: "rgba(255,255,255,0.01)", border: "1px solid var(--bg-border)", padding: "16px", borderRadius: "10px" }}>
+              <h4 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", borderBottom: "1px solid var(--bg-border)", paddingBottom: "8px", margin: "0 0 12px 0" }}>Raise Technical Support Ticket</h4>
+              {ticketSuccess && (
+                <div className="auth-alert auth-alert--success" style={{ marginBottom: "12px" }}>
+                  {ticketSuccess}
+                </div>
+              )}
+              <form onSubmit={handleRaiseTicket} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div className="grid-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "12px" }}>
+                  <div className="auth-field">
+                    <label className="auth-label">Issue Category</label>
+                    <select className="auth-input" style={{ background: "var(--bg-input)", color: "var(--text-primary)" }} value={ticketCategory} onChange={(e) => setTicketCategory(e.target.value)}>
+                      <option value="API Ingestion Error">API Ingestion Error</option>
+                      <option value="Authentication Issue">Authentication Issue</option>
+                      <option value="Scoring Logic Discrepancy">Scoring Logic Discrepancy</option>
+                      <option value="System Downtime">System Downtime</option>
+                    </select>
+                  </div>
+                  <div className="auth-field">
+                    <label className="auth-label">Severity Level</label>
+                    <select className="auth-input" style={{ background: "var(--bg-input)", color: "var(--text-primary)" }} value={ticketSeverity} onChange={(e) => setTicketSeverity(e.target.value)}>
+                      <option value="Low">Low (Minor UI/UX)</option>
+                      <option value="Medium">Medium (Functional Quirk)</option>
+                      <option value="High">High (Underwriting Blocked)</option>
+                      <option value="Critical">Critical (Portal Crash)</option>
+                    </select>
+                  </div>
+                  <div className="auth-field">
+                    <label className="auth-label">Ticket Subject</label>
+                    <input className="auth-input" type="text" placeholder="Short description..." value={ticketSubject} onChange={(e) => setTicketSubject(e.target.value)} required />
+                  </div>
+                </div>
+                <div className="auth-field">
+                  <label className="auth-label">Detailed Description</label>
+                  <textarea className="auth-input" style={{ height: "70px", padding: "8px", resize: "none" }} placeholder="State replication steps or error codes..." value={ticketDesc} onChange={(e) => setTicketDesc(e.target.value)} required />
+                </div>
+                <button className="auth-submit" style={{ width: "fit-content", padding: "8px 20px" }} type="submit">Submit Ticket</button>
+              </form>
+            </div>
+
+            {/* Report System Issue Form */}
+            <div style={{ background: "rgba(255,255,255,0.01)", border: "1px solid var(--bg-border)", padding: "16px", borderRadius: "10px" }}>
+              <h4 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", borderBottom: "1px solid var(--bg-border)", paddingBottom: "8px", margin: "0 0 12px 0" }}>Report System Bug / Issue</h4>
+              {issueSuccess && (
+                <div className="auth-alert auth-alert--success" style={{ marginBottom: "12px" }}>
+                  {issueSuccess}
+                </div>
+              )}
+              <form onSubmit={handleReportIssue} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div className="auth-field">
+                  <label className="auth-label">Bug Type</label>
+                  <select className="auth-input" style={{ background: "var(--bg-input)", color: "var(--text-primary)" }} value={issueType} onChange={(e) => setIssueType(e.target.value)}>
+                    <option value="UI Bug">UI Bug (Alignment/Overlaps)</option>
+                    <option value="Chart Rendering Error">Chart Rendering Error</option>
+                    <option value="Fast Refresh Glitch">Fast Refresh Glitch</option>
+                    <option value="Typo/Text error">Typo / Label error</option>
+                  </select>
+                </div>
+                <div className="auth-field">
+                  <label className="auth-label">Issue Description</label>
+                  <textarea className="auth-input" style={{ height: "60px", padding: "8px", resize: "none" }} placeholder="Describe the bug you observed..." value={issueDesc} onChange={(e) => setIssueDesc(e.target.value)} required />
+                </div>
+                <button className="auth-submit" style={{ width: "fit-content", padding: "8px 20px" }} type="submit">Submit Bug Report</button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ── SECTION: CONTACT INFO ── */}
+        {activeTab === "contact" && (
+          <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+            <div>
+              <h3 style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "4px" }}>Contact Information</h3>
+              <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>Direct contact channels for banking operators and tech assistance.</p>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
+              <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--bg-border)", padding: "16px", borderRadius: "10px" }}>
+                <span style={{ fontSize: "20px" }}>📞</span>
+                <h4 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", margin: "8px 0 4px 0" }}>Internal IT Helpdesk</h4>
+                <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: "0 0 10px 0" }}>Call for urgent technical failures, system lockouts, or network queries.</p>
+                <strong style={{ fontSize: "15px", color: "var(--accent)" }}>+91 22 6655 4321</strong>
+                <span style={{ display: "block", fontSize: "10px", color: "var(--text-muted)", marginTop: "4px" }}>Extension: 8899</span>
+              </div>
+
+              <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--bg-border)", padding: "16px", borderRadius: "10px" }}>
+                <span style={{ fontSize: "20px" }}>✉️</span>
+                <h4 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", margin: "8px 0 4px 0" }}>Technical Support Email</h4>
+                <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: "0 0 10px 0" }}>Email bugs, ticket issues, or server logs to the core software ops team.</p>
+                <strong style={{ fontSize: "15px", color: "var(--accent)" }}>it.support@idbi.co.in</strong>
+              </div>
+
+              <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--bg-border)", padding: "16px", borderRadius: "10px" }}>
+                <span style={{ fontSize: "20px" }}>🏦</span>
+                <h4 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", margin: "8px 0 4px 0" }}>Banking Operations Support</h4>
+                <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: "0 0 10px 0" }}>Email for credit policy questions, scoring weights, or audit guidelines.</p>
+                <strong style={{ fontSize: "15px", color: "var(--accent)" }}>ops.support@idbi.co.in</strong>
+              </div>
+
+              <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--bg-border)", padding: "16px", borderRadius: "10px" }}>
+                <span style={{ fontSize: "20px" }}>🕒</span>
+                <h4 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", margin: "8px 0 4px 0" }}>Support Operational Hours</h4>
+                <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: "0 0 8px 0" }}>IT support is active during bank branch working schedules.</p>
+                <strong style={{ fontSize: "13px", color: "var(--text-primary)" }}>Monday - Saturday: 9:30 AM - 6:30 PM</strong>
+                <span style={{ display: "block", fontSize: "10.5px", color: "var(--text-muted)", marginTop: "4px" }}>2nd & 4th Saturdays Off</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── SECTION: COMPLIANCE ── */}
+        {activeTab === "compliance" && (
+          <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+            <div>
+              <h3 style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "4px" }}>Compliance & Law</h3>
+              <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>Read banking standards, compliance structures, and legal definitions.</p>
+            </div>
+
+            <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--bg-border)", padding: "16px", borderRadius: "10px" }}>
+              <h4 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0" }}>RBI Digital Lending Guidelines Compliance</h4>
+              <p style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: 1.6, margin: 0 }}>
+                Regulated Entities (REs) must ensure credit decisions are audit-traceable and transparent. The Financial Health Card scoring engine operates on a purely deterministic formula (cash flow, consistency, compliance, operational continuity, resilience). The SHAP-style explainability layer details the precise telemetry triggers that lead to score adjustments, satisfying borrowing explainability guidelines. No black-box automated decisions are performed.
+              </p>
+            </div>
+
+            <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--bg-border)", padding: "16px", borderRadius: "10px" }}>
+              <h4 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0" }}>DPDP Act 2023 Consent Framework</h4>
+              <p style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: 1.6, margin: 0 }}>
+                Data ingestion is governed under standard Consent Manager interfaces. The customer provides purpose-bound, revocable digital permission for ingestion of GST, UPI, AA, and Utility telemetry. Underwriters must respect DPDP consent mandates: if a borrower revokes permission via settings, the system immediately ceases all recurring data synchronization, halting underwriting appraisal refreshes.
+              </p>
+            </div>
+
+            <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--bg-border)", padding: "16px", borderRadius: "10px" }}>
+              <h4 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px 0" }}>Internal Security Policy & Access Boundaries</h4>
+              <p style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: 1.6, margin: 0 }}>
+                System usage is restricted using strict Role-Based Access Control (RBAC). Employees are only authorized to read credit score summaries and write appraisal comments. All active underwriter inputs, password updates, and decision approvals (approved/declined) write audit logs to the immutable local log ledger. This maintains co-equal credit checks and blocks credential spoofing.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ── SECTION: ABOUT ── */}
+        {activeTab === "about" && (
+          <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+            <div>
+              <h3 style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "4px" }}>About System</h3>
+              <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>View technical metadata, software releases, and system uptime.</p>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
+              <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--bg-border)", padding: "16px", borderRadius: "8px" }}>
+                <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block", textTransform: "uppercase" }}>Version</span>
+                <strong style={{ fontSize: "15px", color: "var(--text-primary)" }}>v3.0.0-beta (Clean Architecture)</strong>
+              </div>
+              <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--bg-border)", padding: "16px", borderRadius: "8px" }}>
+                <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block", textTransform: "uppercase" }}>System Status</span>
+                <strong style={{ fontSize: "15px", color: "var(--risk-low-color)" }}>🟢 Healthy / Operational</strong>
+              </div>
+              <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--bg-border)", padding: "16px", borderRadius: "8px" }}>
+                <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block", textTransform: "uppercase" }}>Last Released</span>
+                <strong style={{ fontSize: "15px", color: "var(--text-primary)" }}>July 2026</strong>
+              </div>
+            </div>
+
+            <div style={{ background: "rgba(255,255,255,0.01)", border: "1px solid var(--bg-border)", padding: "16px", borderRadius: "10px" }}>
+              <h4 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", borderBottom: "1px solid var(--bg-border)", paddingBottom: "8px", margin: "0 0 10px 0" }}>System Release Notes</h4>
+              <div style={{ fontSize: "12px", color: "var(--text-secondary)", display: "flex", flexDirection: "column", gap: "8px" }}>
+                <div>
+                  <strong>v3.0.0-beta Release (Current)</strong>
+                  <p style={{ margin: "4px 0 0 12px", fontSize: "11px", color: "var(--text-muted)", lineHeight: 1.4 }}>
+                    Aggregated alternate telemetry scoring. Integrated FastAPI endpoint routing with SQLAlchemy models and direct Bcrypt password validation. Configured Hugging Face Inference API for natural language credit analysis.
+                  </p>
+                </div>
+                <div>
+                  <strong>v2.1.0-alpha Release</strong>
+                  <p style={{ margin: "4px 0 0 12px", fontSize: "11px", color: "var(--text-muted)", lineHeight: 1.4 }}>
+                    Designed sliding glassmorphism Auth toggles and applicant session gliders. Configured post-signup onboarding forms and consent managers.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h4 style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)", borderBottom: "1px solid var(--bg-border)", paddingBottom: "8px", margin: "0 0 10px 0" }}>About AI MSME Financial Health Card</h4>
+              <p style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: 1.5, margin: 0 }}>
+                This prototype helps underwriters assess credit requests for thin-file MSMEs. By aggregating Consented Alternate Data feeds (GSTIN, UPI, EPFO, utility, bank statement cashflows), the engine calculates an auditable scorecard. In production, this system integrates with standardized Account Aggregators and OCEN APIs, enabling frictionless, compliant lending.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Logout Confirmation Dialog Overlay ── */}
+      {showLogoutConfirm && (
+        <div 
+          className="auth-overlay auth-overlay--in" 
+          style={{ zIndex: 1000 }}
+          role="presentation"
+        >
+          <div 
+            className="auth-card auth-card--in" 
+            style={{ maxWidth: "380px", width: "90%", textAlign: "center", padding: "24px" }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Confirm Log Out"
+          >
+            <span style={{ fontSize: "36px", display: "block", marginBottom: "12px" }}>⚠️</span>
+            <h3 style={{ fontSize: "16px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "8px" }}>
+              Confirm Account Log Out
+            </h3>
+            <p style={{ fontSize: "12.5px", color: "var(--text-muted)", lineHeight: 1.5, marginBottom: "20px" }}>
+              Are you sure you wish to log out from the MSME Financial Health Card portal? You will need to re-authenticate to view your credit scorecards.
+            </p>
+
+            <div style={{ display: "flex", gap: "12px" }}>
+              <button 
+                className="landing-btn-secondary" 
+                onClick={() => setShowLogoutConfirm(false)}
+                style={{ flex: 1, padding: "10px", borderRadius: "8px", fontSize: "13px" }}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  logout();
+                }}
+                style={{ 
+                  flex: 1, 
+                  padding: "10px", 
+                  borderRadius: "8px", 
+                  fontSize: "13px",
+                  background: "rgba(255, 69, 58, 0.85)", 
+                  borderColor: "rgba(255, 69, 58, 0.4)",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                }}
+                type="button"
+              >
+                Log Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -4182,6 +5523,7 @@ export default function App() {
     updateSystemConfig,
     completeKYC,
     updateApplicantProfile,
+    resetPassword,
   } = useAuth();
 
   const [view, setView] = useState("home");
@@ -4227,7 +5569,7 @@ export default function App() {
         loanStatus: loan.status,
       };
     });
-  }, [loanApplications, applicants, systemConfig]);
+  }, [loanApplications, applicants]);
 
   // Dynamic applicant MSME lookup
   const myMsme = useMemo(() => {

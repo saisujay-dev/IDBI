@@ -69,7 +69,7 @@ const SEED_MSMES = [
   { id: "MSME-009", name: "Jaipur Craft Collective", owner: "Meera Agarwal", email: "meera@jaipurcrafts.com", phone: "9876543218", gstin: "08IIIII9999I9Z9", pan: "IIIII9999I", aadhaar: "123456789020" },
 ];
 
-const SEED_EMPLOYEES = [
+const _SEED_EMPLOYEES = [
   { id: "EMP-001", name: "Amit Sharma", email: "amit.sharma@idbi.co.in", status: "Active" },
   { id: "EMP-002", name: "Neha Verma", email: "neha.verma@idbi.co.in", status: "Active" },
 ];

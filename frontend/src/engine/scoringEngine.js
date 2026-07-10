@@ -23,7 +23,7 @@ const getActiveWeights = () => {
     if (config && config.weights) {
       return config.weights;
     }
-  } catch (e) {}
+  } catch {}
   return {
     cashFlowStrength:      0.25,
     revenueConsistency:    0.20,
