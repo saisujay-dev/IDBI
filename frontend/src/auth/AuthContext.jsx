@@ -80,42 +80,12 @@ const seedDatabase = async () => {
 
   // 1. Applicants (MSME Users)
   if (!localStorage.getItem("msme_users")) {
-    const defaultUsers = SEED_MSMES.map((m, idx) => ({
-      id: `user_${m.id}`,
-      name: m.owner,
-      email: m.email,
-      mobileNumber: m.phone,
-      password: hashedDefaultPw,
-      verified: true,
-      status: "Active",
-      kycCompleted: true, // Seed profiles start with completed KYC
-      linkedMsmeId: m.id,
-      color: AVATAR_COLORS[idx % AVATAR_COLORS.length],
-      initials: initials(m.owner),
-      kycDetails: {
-        businessName: m.name,
-        businessType: "Pvt Ltd",
-        address: `${m.location}, India`,
-        gstin: m.gstin,
-        pan: m.pan,
-        aadhaar: m.aadhaar,
-      },
-    }));
-    localStorage.setItem("msme_users", JSON.stringify(defaultUsers));
+    localStorage.setItem("msme_users", JSON.stringify([]));
   }
 
   // 2. Bank Employees
   if (!localStorage.getItem("msme_employees")) {
-    const defaultEmployees = SEED_EMPLOYEES.map((e, idx) => ({
-      id: e.id,
-      name: e.name,
-      email: e.email,
-      password: hashedDefaultPw,
-      status: e.status,
-      color: AVATAR_COLORS[(idx + 3) % AVATAR_COLORS.length],
-      initials: initials(e.name),
-    }));
-    localStorage.setItem("msme_employees", JSON.stringify(defaultEmployees));
+    localStorage.setItem("msme_employees", JSON.stringify([]));
   }
 
   // 3. Super Admins
@@ -135,18 +105,7 @@ const seedDatabase = async () => {
 
   // 4. Loan Applications
   if (!localStorage.getItem("msme_loan_applications")) {
-    const defaultLoans = [
-      { id: "LN-001", msmeId: "MSME-001", amount: 2500000, purpose: "Working Capital", date: "2026-06-15", status: "Approved" },
-      { id: "LN-002", msmeId: "MSME-002", amount: 1800000, purpose: "Equipment Purchase", date: "2026-06-20", status: "Approved" },
-      { id: "LN-003", msmeId: "MSME-003", amount: 1200000, purpose: "Inventory Restocking", date: "2026-06-22", status: "Declined" },
-      { id: "LN-004", msmeId: "MSME-004", amount: 800000, purpose: "Machinery Repair", date: "2026-06-25", status: "Declined" },
-      { id: "LN-005", msmeId: "MSME-005", amount: 3000000, purpose: "Pre-Season Inventory", date: "2026-06-28", status: "Approved with Conditions" },
-      { id: "LN-006", msmeId: "MSME-006", amount: 4000000, purpose: "Capacity Expansion", date: "2026-06-30", status: "Approved with Conditions" },
-      { id: "LN-007", msmeId: "MSME-007", amount: 5000000, purpose: "Equipment Hire & Materials", date: "2026-07-02", status: "Under Review" },
-      { id: "LN-008", msmeId: "MSME-008", amount: 8000000, purpose: "Expansion", date: "2026-07-03", status: "Manual Review Required" },
-      { id: "LN-009", msmeId: "MSME-009", amount: 1500000, purpose: "Export Order Financing", date: "2026-07-05", status: "Approved" },
-    ];
-    localStorage.setItem("msme_loan_applications", JSON.stringify(defaultLoans));
+    localStorage.setItem("msme_loan_applications", JSON.stringify([]));
   }
 
   // 5. System Config

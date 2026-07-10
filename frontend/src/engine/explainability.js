@@ -210,7 +210,7 @@ export const portfolioAnalytics = (scoredMSMEs) => {
   const high   = scoredMSMEs.filter((m) => m.riskBand === "HIGH").length;
   const fraudFlags = scoredMSMEs.filter((m) => m.crossValidation.isFlagged).length;
 
-  const avgScore = Math.round(
+  const avgScore = total === 0 ? 0 : Math.round(
     scoredMSMEs.reduce((s, m) => s + m.overallScore, 0) / total
   );
 

@@ -19,7 +19,7 @@ import {
   Legend,
 } from "recharts";
 import { MSME_DATA } from "./data/msmeData";
-import { scoreAllMSMEs, RISK_BANDS, ACTIONS, WEIGHTS } from "./engine/scoringEngine";
+import { scoreAllMSMEs, scoreMSME, RISK_BANDS, ACTIONS, WEIGHTS } from "./engine/scoringEngine";
 import {
   extractDrivers,
   generateUnderwriterNote,
@@ -564,8 +564,15 @@ function MSMEListView({ scoredMsmes, onSelect }) {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((m) => (
-              <tr key={m.id} onClick={() => onSelect(m)}>
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan="7" style={{ textAlign: "center", color: "var(--text-muted)", padding: "30px" }}>
+                  No active loan applications found.
+                </td>
+              </tr>
+            ) :
+              filtered.map((m) => (
+                <tr key={m.id} onClick={() => onSelect(m)}>
                 <td>
                   <div className="msme-name-cell">
                     <span className="msme-name-primary">{m.name}</span>
@@ -1097,10 +1104,17 @@ function PortfolioView({ scoredMsmes, onSelect }) {
             </tr>
           </thead>
           <tbody>
-            {scoredMsmes
-              .slice()
-              .sort((a, b) => b.overallScore - a.overallScore)
-              .map((m) => (
+            {scoredMsmes.length === 0 ? (
+              <tr>
+                <td colSpan="6" style={{ textAlign: "center", color: "var(--text-muted)", padding: "20px" }}>
+                  No applications in portfolio.
+                </td>
+              </tr>
+            ) :
+              scoredMsmes
+                .slice()
+                .sort((a, b) => b.overallScore - a.overallScore)
+                .map((m) => (
                 <tr key={m.id} onClick={() => onSelect(m)} style={{ cursor: "pointer" }}>
                   <td style={{ fontWeight: 600 }}>{m.name}</td>
                   <td>
@@ -3108,45 +3122,51 @@ function EmployeeDashboardView({ scoredMsmes, setView }) {
           </div>
 
           <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", gap: "12px", marginTop: "14px" }}>
-            {scoredMsmes
-              .filter((m) => m.crossValidation.isFlagged || m.overallScore < 450)
-              .map((m) => (
-                <div
-                  key={m.id}
-                  onClick={() => setView("list")}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "10px 14px",
-                    background: "rgba(255,255,255,0.02)",
-                    border: `1px solid ${m.crossValidation.isFlagged ? "rgba(249,115,22,0.22)" : "rgba(239,68,68,0.22)"}`,
-                    borderRadius: "10px",
-                    cursor: "pointer",
-                  }}
-                >
-                  <div>
-                    <div style={{ fontWeight: 650, fontSize: "13px", color: "var(--text-primary)" }}>{m.name}</div>
-                    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
-                      {m.crossValidation.isFlagged
-                        ? `Divergence: ${m.crossValidation.avgDivergence}%`
-                        : `Low Score: ${m.overallScore}`}
-                    </div>
-                  </div>
-                  <span
+            {scoredMsmes.filter((m) => m.crossValidation.isFlagged || m.overallScore < 450).length === 0 ? (
+              <div style={{ textAlign: "center", padding: "20px 10px", color: "var(--text-muted)", fontSize: "13px" }}>
+                ✓ No urgent credit or validation flags.
+              </div>
+            ) : (
+              scoredMsmes
+                .filter((m) => m.crossValidation.isFlagged || m.overallScore < 450)
+                .map((m) => (
+                  <div
+                    key={m.id}
+                    onClick={() => setView("list")}
                     style={{
-                      fontSize: "10px",
-                      background: m.crossValidation.isFlagged ? "rgba(249,115,22,0.12)" : "rgba(239,68,68,0.12)",
-                      color: m.crossValidation.isFlagged ? "#f97316" : "#ef4444",
-                      padding: "4px 8px",
-                      borderRadius: "6px",
-                      fontWeight: 700,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "10px 14px",
+                      background: "rgba(255,255,255,0.02)",
+                      border: `1px solid ${m.crossValidation.isFlagged ? "rgba(249,115,22,0.22)" : "rgba(239,68,68,0.22)"}`,
+                      borderRadius: "10px",
+                      cursor: "pointer",
                     }}
                   >
-                    {m.crossValidation.isFlagged ? "FLAGGED" : "HIGH RISK"}
-                  </span>
-                </div>
-              ))}
+                    <div>
+                      <div style={{ fontWeight: 650, fontSize: "13px", color: "var(--text-primary)" }}>{m.name}</div>
+                      <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
+                        {m.crossValidation.isFlagged
+                          ? `Divergence: ${m.crossValidation.avgDivergence}%`
+                          : `Low Score: ${m.overallScore}`}
+                      </div>
+                    </div>
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        background: m.crossValidation.isFlagged ? "rgba(249,115,22,0.12)" : "rgba(239,68,68,0.12)",
+                        color: m.crossValidation.isFlagged ? "#f97316" : "#ef4444",
+                        padding: "4px 8px",
+                        borderRadius: "6px",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {m.crossValidation.isFlagged ? "FLAGGED" : "HIGH RISK"}
+                    </span>
+                  </div>
+                ))
+            )}
           </div>
         </div>
 
@@ -3568,7 +3588,14 @@ function EmployeeManagementView({ employees, addEmployee, toggleEmployeeStatus }
               </tr>
             </thead>
             <tbody>
-              {employees.map((emp) => (
+            {employees.length === 0 ? (
+              <tr>
+                <td colSpan="4" style={{ textAlign: "center", color: "var(--text-muted)", padding: "16px" }}>
+                  No bank employees registered yet.
+                </td>
+              </tr>
+            ) : (
+              employees.map((emp) => (
                 <tr key={emp.id}>
                   <td style={{ fontWeight: "bold" }}>{emp.id}</td>
                   <td>{emp.name}</td>
@@ -3604,7 +3631,8 @@ function EmployeeManagementView({ employees, addEmployee, toggleEmployeeStatus }
                     </button>
                   </td>
                 </tr>
-              ))}
+              ))
+            )}
             </tbody>
           </table>
         </div>
@@ -3665,82 +3693,90 @@ function UserManagementView({ applicants, toggleApplicantStatus, verifyApplicant
           </tr>
         </thead>
         <tbody>
-          {applicants.map((app) => (
-            <tr key={app.id}>
-              <td>
-                <div style={{ fontWeight: "bold" }}>{app.name}</div>
-                <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>ID: {app.id}</div>
+          {applicants.length === 0 ? (
+            <tr>
+              <td colSpan="7" style={{ textAlign: "center", color: "var(--text-muted)", padding: "16px" }}>
+                No applicant users registered yet.
               </td>
-              <td style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{app.email}</td>
-              <td style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{app.mobileNumber}</td>
-              <td>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    background: app.kycCompleted ? "rgba(48,209,88,0.12)" : "rgba(255,69,58,0.12)",
-                    color: app.kycCompleted ? "#30D158" : "#FF453A",
-                    padding: "3px 8px",
-                    borderRadius: "6px",
-                    fontWeight: 700,
-                  }}
-                >
-                  {app.kycCompleted ? "COMPLETED" : "PENDING"}
-                </span>
-              </td>
-              <td>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    background: app.verified ? "rgba(48,209,88,0.12)" : "rgba(255,159,10,0.12)",
-                    color: app.verified ? "#30D158" : "#FF9F0A",
-                    padding: "3px 8px",
-                    borderRadius: "6px",
-                    fontWeight: 700,
-                  }}
-                >
-                  {app.verified ? "VERIFIED" : "PENDING OTP"}
-                </span>
-              </td>
-              <td>
-                <button
-                  onClick={() => toggleApplicantStatus(app.email)}
-                  style={{
-                    background: app.status === "Active" ? "rgba(255,69,58,0.12)" : "rgba(48,209,88,0.12)",
-                    color: app.status === "Active" ? "#FF453A" : "#30D158",
-                    border: "none",
-                    padding: "5px 10px",
-                    borderRadius: "6px",
-                    cursor: "pointer",
-                    fontSize: "11.5px",
-                    fontWeight: "bold",
-                  }}
-                >
-                  {app.status === "Active" ? "Suspend" : "Activate"}
-                </button>
-              </td>
-              <td>
-                {!app.verified ? (
-                  <button
-                    onClick={() => verifyApplicantManually(app.email)}
+            </tr>
+          ) : (
+            applicants.map((app) => (
+              <tr key={app.id}>
+                <td>
+                  <div style={{ fontWeight: "bold" }}>{app.name}</div>
+                  <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>ID: {app.id}</div>
+                </td>
+                <td style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{app.email}</td>
+                <td style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{app.mobileNumber}</td>
+                <td>
+                  <span
                     style={{
-                      background: "rgba(59,130,246,0.15)",
-                      color: "var(--accent-blue-light)",
+                      fontSize: "11px",
+                      background: app.kycCompleted ? "rgba(48,209,88,0.12)" : "rgba(255,69,58,0.12)",
+                      color: app.kycCompleted ? "#30D158" : "#FF453A",
+                      padding: "3px 8px",
+                      borderRadius: "6px",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {app.kycCompleted ? "COMPLETED" : "PENDING"}
+                  </span>
+                </td>
+                <td>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      background: app.verified ? "rgba(48,209,88,0.12)" : "rgba(255,159,10,0.12)",
+                      color: app.verified ? "#30D158" : "#FF9F0A",
+                      padding: "3px 8px",
+                      borderRadius: "6px",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {app.verified ? "VERIFIED" : "PENDING OTP"}
+                  </span>
+                </td>
+                <td>
+                  <button
+                    onClick={() => toggleApplicantStatus(app.email)}
+                    style={{
+                      background: app.status === "Active" ? "rgba(255,69,58,0.12)" : "rgba(48,209,88,0.12)",
+                      color: app.status === "Active" ? "#FF453A" : "#30D158",
                       border: "none",
                       padding: "5px 10px",
                       borderRadius: "6px",
                       cursor: "pointer",
-                      fontSize: "11px",
+                      fontSize: "11.5px",
                       fontWeight: "bold",
                     }}
                   >
-                    Bypass OTP
+                    {app.status === "Active" ? "Suspend" : "Activate"}
                   </button>
-                ) : (
-                  <span style={{ fontSize: "11.5px", color: "var(--text-muted)" }}>Verified</span>
-                )}
-              </td>
-            </tr>
-          ))}
+                </td>
+                <td>
+                  {!app.verified ? (
+                    <button
+                      onClick={() => verifyApplicantManually(app.email)}
+                      style={{
+                        background: "rgba(59,130,246,0.15)",
+                        color: "var(--accent-blue-light)",
+                        border: "none",
+                        padding: "5px 10px",
+                        borderRadius: "6px",
+                        cursor: "pointer",
+                        fontSize: "11px",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      Bypass OTP
+                    </button>
+                  ) : (
+                    <span style={{ fontSize: "11.5px", color: "var(--text-muted)" }}>Verified</span>
+                  )}
+                </td>
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
     </div>
@@ -3902,42 +3938,50 @@ function AuditLogsView({ auditLogs }) {
             <th>Status</th>
           </tr>
         </thead>
-        <tbody>
-          {filtered.map((log) => (
-            <tr key={log.id}>
-              <td style={{ fontSize: "11.5px", color: "var(--text-muted)" }}>
-                {log.timestamp.replace("T", " ").substring(0, 19)}
-              </td>
-              <td style={{ fontWeight: "bold", fontSize: "12px" }}>{log.userId}</td>
-              <td style={{ fontSize: "12.5px" }}>{log.name}</td>
-              <td>
-                <span
-                  style={{
-                    fontSize: "9px",
-                    background:
-                      log.role === "admin"
-                        ? "rgba(191,90,242,0.12)"
-                        : log.role === "employee"
-                        ? "rgba(48,209,88,0.12)"
-                        : "rgba(79,157,255,0.12)",
-                    color: log.role === "admin" ? "#BF5AF2" : log.role === "employee" ? "#30D158" : "var(--accent-light)",
-                    padding: "2px 6px",
-                    borderRadius: "6px",
-                    fontWeight: 700,
-                  }}
-                >
-                  {log.role.toUpperCase()}
-                </span>
-              </td>
-              <td style={{ fontSize: "12.5px", color: "var(--text-primary)" }}>{log.action}</td>
-              <td style={{ fontSize: "12px", color: "var(--text-muted)" }}>{log.ip}</td>
-              <td>
-                <span style={{ fontSize: "12px", fontWeight: "bold", color: log.status === "Success" ? "var(--risk-low-color)" : "var(--risk-high-color)" }}>
-                  {log.status}
-                </span>
-              </td>
-            </tr>
-          ))}
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan="7" style={{ textAlign: "center", color: "var(--text-muted)", padding: "16px" }}>
+                  No audited logs found matching filters.
+                </td>
+              </tr>
+            ) : (
+              filtered.map((log) => (
+                <tr key={log.id}>
+                  <td style={{ fontSize: "11.5px", color: "var(--text-muted)" }}>
+                    {log.timestamp.replace("T", " ").substring(0, 19)}
+                  </td>
+                  <td style={{ fontWeight: "bold", fontSize: "12px" }}>{log.userId}</td>
+                  <td style={{ fontSize: "12.5px" }}>{log.name}</td>
+                  <td>
+                    <span
+                      style={{
+                        fontSize: "9px",
+                        background:
+                          log.role === "admin"
+                            ? "rgba(191,90,242,0.12)"
+                            : log.role === "employee"
+                            ? "rgba(48,209,88,0.12)"
+                            : "rgba(79,157,255,0.12)",
+                        color: log.role === "admin" ? "#BF5AF2" : log.role === "employee" ? "#30D158" : "var(--accent-light)",
+                        padding: "2px 6px",
+                        borderRadius: "6px",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {log.role.toUpperCase()}
+                    </span>
+                  </td>
+                  <td style={{ fontSize: "12.5px", color: "var(--text-primary)" }}>{log.action}</td>
+                  <td style={{ fontSize: "12px", color: "var(--text-muted)" }}>{log.ip}</td>
+                  <td>
+                    <span style={{ fontSize: "12px", fontWeight: "bold", color: log.status === "Success" ? "var(--risk-low-color)" : "var(--risk-high-color)" }}>
+                      {log.status}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
         </tbody>
       </table>
     </div>
@@ -4144,10 +4188,46 @@ export default function App() {
   const [selectedMSME, setSelectedMSME] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
 
-  // Recalculate credit scores dynamically on every config change
+  // Recalculate credit scores dynamically on config, applicants, or loan applications change
   const scoredMsmes = useMemo(() => {
-    return scoreAllMSMEs(MSME_DATA);
-  }, [systemConfig]);
+    return loanApplications.map((loan) => {
+      const baseMsme = MSME_DATA.find((m) => m.id === loan.msmeId) || MSME_DATA.find((m) => m.id === "MSME-009") || MSME_DATA[0];
+      const applicantUser = applicants.find((u) => u.linkedMsmeId === loan.msmeId);
+      const msmeData = {
+        ...baseMsme,
+        id: loan.msmeId,
+        name: applicantUser?.kycDetails?.businessName || baseMsme.name,
+        owner: applicantUser?.name || baseMsme.owner,
+        loanAmountRequested: loan.amount || baseMsme.loanAmountRequested,
+        loanPurpose: loan.purpose || baseMsme.loanPurpose,
+      };
+      const scored = scoreMSME(msmeData);
+
+      let action = scored.recommendedAction;
+      if (loan.status === "Approved") action = "APPROVE";
+      else if (loan.status === "Approved with Conditions") action = "APPROVE_CONDITIONS";
+      else if (loan.status === "Declined") action = "DECLINE";
+      else if (loan.status === "Under Review") action = "REQUEST_MORE_DATA";
+      else if (loan.status === "Manual Review Required") action = "REVIEW_MANUALLY";
+
+      const ACTIONS_MAP = {
+        APPROVE: { label: "Approve", color: "#22c55e", icon: "check" },
+        APPROVE_CONDITIONS: { label: "Approve with Conditions", color: "#3b82f6", icon: "info" },
+        REVIEW_MANUALLY: { label: "Review Manually", color: "#f59e0b", icon: "eye" },
+        REQUEST_MORE_DATA: { label: "Request More Data", color: "#8b5cf6", icon: "upload" },
+        DECLINE: { label: "Decline", color: "#ef4444", icon: "x" },
+      };
+
+      return {
+        ...scored,
+        recommendedAction: action,
+        actionConfig: ACTIONS_MAP[action] || ACTIONS_MAP.REVIEW_MANUALLY,
+        loanId: loan.id,
+        loanDate: loan.date,
+        loanStatus: loan.status,
+      };
+    });
+  }, [loanApplications, applicants, systemConfig]);
 
   // Dynamic applicant MSME lookup
   const myMsme = useMemo(() => {

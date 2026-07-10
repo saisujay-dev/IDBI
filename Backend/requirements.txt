@@ -1,0 +1,32 @@
+# Core Backend
+fastapi
+uvicorn[standard]
+
+# Database
+sqlalchemy
+alembic
+psycopg2-binary
+asyncpg
+
+# Validation
+pydantic
+pydantic-settings
+
+# Authentication & Security
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt
+python-multipart
+
+# Environment
+python-dotenv
+
+# Utilities & HTTP Client
+email-validator
+httpx
+
+# AI Integration
+google-generativeai
+
+# Logging
+loguru
