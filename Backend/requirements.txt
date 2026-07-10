@@ -1,32 +1,32 @@
 # Core Backend
-fastapi
-uvicorn[standard]
+fastapi==0.139.0
+uvicorn[standard]==0.51.0
 
 # Database
-sqlalchemy
-alembic
-psycopg2-binary
-asyncpg
+SQLAlchemy==2.0.51
+alembic==1.18.5
+psycopg2-binary==2.9.12
+asyncpg==0.31.0
 
 # Validation
-pydantic
-pydantic-settings
+pydantic==2.13.4
+pydantic-settings==2.14.2
 
 # Authentication & Security
-python-jose[cryptography]
-passlib[bcrypt]
-bcrypt
-python-multipart
+python-jose[cryptography]==3.5.0
+passlib[bcrypt]==1.7.4
+bcrypt==5.0.0
+python-multipart==0.0.32
 
 # Environment
-python-dotenv
+python-dotenv==1.2.2
 
 # Utilities & HTTP Client
-email-validator
-httpx
+email-validator==2.3.0
+httpx==0.28.1
 
 # AI Integration
-google-generativeai
+google-genai
 
 # Logging
-loguru
+loguru==0.7.3
