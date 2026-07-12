@@ -7,8 +7,12 @@ database_url = settings.DATABASE_URL
 connect_args = {}
 
 if "postgresql+asyncpg" in database_url:
-    # asyncpg uses ssl=True instead of sslmode=require
-    connect_args["ssl"] = True
+    import ssl
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+    connect_args["ssl"] = ssl_context
+    
     if "sslmode=" in database_url:
         import urllib.parse as urlparse
         url_parts = list(urlparse.urlparse(database_url))
