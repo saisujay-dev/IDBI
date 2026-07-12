@@ -23,7 +23,21 @@ from app.models.score import Score
 config = context.config
 
 # Dynamically set the sqlalchemy.url option from settings
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# Dynamically set the sqlalchemy.url option from settings after removing sslmode if present
+database_url = settings.DATABASE_URL
+connect_args = {}
+
+if "postgresql+asyncpg" in database_url:
+    connect_args["ssl"] = True
+    if "sslmode=" in database_url:
+        import urllib.parse as urlparse
+        url_parts = list(urlparse.urlparse(database_url))
+        query = dict(urlparse.parse_qsl(url_parts[4]))
+        query.pop('sslmode', None)
+        url_parts[4] = urlparse.urlencode(query)
+        database_url = urlparse.urlunparse(url_parts)
+
+config.set_main_option("sqlalchemy.url", database_url)
 
 # Interpret the config file for Python logging.
 if config.config_file_name is not None:
@@ -56,6 +70,7 @@ async def run_migrations_online() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=connect_args,
     )
 
     async with connectable.connect() as connection:

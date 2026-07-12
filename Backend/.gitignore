@@ -1,0 +1,9 @@
+# Ignored binaries
+render.exe
+
+# Ignored pycache
+__pycache__/
+*.pyc
+
+# Local env files
+.env
