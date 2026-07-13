@@ -7,6 +7,16 @@
 
 ---
 
+## 🚀 Production Deployed Services
+
+The application is fully deployed and configured in the cloud:
+
+* **Interactive Frontend (React SPA)**: [https://idbi-frontend-pe4i.onrender.com](https://idbi-frontend-pe4i.onrender.com)
+* **Backend API Engine**: [https://idbi-backend-0am7.onrender.com](https://idbi-backend-0am7.onrender.com)
+* **Interactive API Documentation (Swagger UI)**: [https://idbi-backend-0am7.onrender.com/docs](https://idbi-backend-0am7.onrender.com/docs)
+
+---
+
 ## Architecture & Project Structure
 
 The project has been migrated from a purely mock-based frontend to a fully integrated **FastAPI backend + PostgreSQL + React SPA** architecture using Clean Architecture principles.
