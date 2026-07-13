@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { api } from "../api";
 
 // ── Context ──────────────────────────────────────────────────────────────────
 const AuthContext = createContext(null);
@@ -55,6 +56,109 @@ const AVATAR_COLORS = [
   "#FF6B6B",
   "#34C759",
 ];
+
+const API_TOKEN_KEY = "msme_api_token";
+
+const getStoredApiToken = () =>
+  localStorage.getItem(API_TOKEN_KEY) || sessionStorage.getItem(API_TOKEN_KEY);
+
+const persistApiToken = (token, rememberMe) => {
+  if (!token) return;
+  if (rememberMe) {
+    localStorage.setItem(API_TOKEN_KEY, token);
+    sessionStorage.removeItem(API_TOKEN_KEY);
+  } else {
+    sessionStorage.setItem(API_TOKEN_KEY, token);
+    localStorage.removeItem(API_TOKEN_KEY);
+  }
+};
+
+const clearApiToken = () => {
+  localStorage.removeItem(API_TOKEN_KEY);
+  sessionStorage.removeItem(API_TOKEN_KEY);
+};
+
+const normalizeStatus = (status) =>
+  status ? `${status.charAt(0).toUpperCase()}${status.slice(1).toLowerCase()}` : "Active";
+
+const mapApiUserToSession = (apiUser, fallback = {}) => {
+  const profile = apiUser?.profile || {};
+  const name = profile.name || fallback.name || apiUser?.email || "User";
+  const role = apiUser?.role === "super_admin" ? "admin" : apiUser?.role || fallback.role || "applicant";
+  const kycDetails =
+    profile.business_name || profile.gstin || profile.pan || profile.aadhaar
+      ? {
+          aadhaar: profile.aadhaar || "",
+          pan: profile.pan || "",
+          gstin: profile.gstin || "",
+          businessName: profile.business_name || "",
+          businessType: profile.business_type || "",
+          address: profile.address || "",
+        }
+      : fallback.kycDetails || null;
+
+  return {
+    id: apiUser?.id || fallback.id,
+    name,
+    email: apiUser?.email || fallback.email,
+    mobileNumber: fallback.mobileNumber || "",
+    role,
+    kycCompleted: role === "applicant" ? !!kycDetails : true,
+    linkedMsmeId: fallback.linkedMsmeId || null,
+    kycDetails,
+    color: fallback.color || AVATAR_COLORS[0],
+    initials: initials(name),
+  };
+};
+
+const mapApiUserToApplicant = (apiUser, fallback = {}) => {
+  const session = mapApiUserToSession(apiUser, fallback);
+  return {
+    ...fallback,
+    ...session,
+    verified: true,
+    status: normalizeStatus(apiUser?.status),
+    password: fallback.password || "",
+  };
+};
+
+const mapApiApplicationToLoan = (application, index = 0) => ({
+  id: application.id,
+  msmeId: application.user_id || `API-MSME-${index + 1}`,
+  amount: Number(application.amount || 0),
+  purpose: application.purpose || "Working Capital",
+  date: application.submitted_at ? application.submitted_at.split("T")[0] : new Date().toISOString().split("T")[0],
+  status: application.status
+    ? application.status
+        .split("_")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ")
+    : "Under Review",
+  apiScore: application.score || null,
+});
+
+const buildFinancialPayload = (loanAmount) => {
+  const amount = Number(loanAmount) || 1000000;
+  const monthlyTurnover = Math.max(amount * 0.18, 250000);
+  const bankInflow = Math.max(monthlyTurnover * 1.08, 300000);
+  return {
+    year_month: new Date().toISOString().slice(0, 7),
+    gst_turnover: monthlyTurnover,
+    upi_inflow: Math.max(monthlyTurnover * 0.65, 180000),
+    bank_inflow: bankInflow,
+    bank_outflow: Math.max(bankInflow * 0.78, 220000),
+    bank_avg_balance: Math.max(amount * 0.08, 75000),
+    bank_min_balance: Math.max(amount * 0.012, 12000),
+    bank_bounce_incidents: 0,
+    bank_low_balance_months: 0,
+    bank_od_cc_utilized: 0.35,
+    epfo_contributions: 15000,
+    epfo_employee_count: 12,
+    utility_monthly_units: 450,
+    utility_payment_regularity: 1.0,
+    utility_disconnection_events: 0,
+  };
+};
 
 // Initial Seed Data mapping
 const SEED_MSMES = [
@@ -170,6 +274,22 @@ export function AuthProvider({ children }) {
     } catch {}
   }, []);
 
+  const syncBackendTables = useCallback(async (sessionUser, token) => {
+    if (!token || !sessionUser) return;
+    try {
+      if (sessionUser.role === "employee") {
+        const applications = await api.getEmployeeApplications(token);
+        localStorage.setItem(
+          "msme_loan_applications",
+          JSON.stringify((applications || []).map(mapApiApplicationToLoan))
+        );
+        refreshLocalState();
+      }
+    } catch (err) {
+      console.warn("Backend table sync failed", err);
+    }
+  }, [refreshLocalState]);
+
   // Initialize DB and Restore session on mount
   useEffect(() => {
     const init = async () => {
@@ -178,6 +298,21 @@ export function AuthProvider({ children }) {
 
       try {
         const storedToken = localStorage.getItem("msme_auth_token") || sessionStorage.getItem("msme_auth_token");
+        const apiToken = getStoredApiToken();
+        if (apiToken) {
+          try {
+            const apiUser = await api.me(apiToken);
+            const restored = mapApiUserToSession(apiUser);
+            setUser(restored);
+            await syncBackendTables(restored, apiToken);
+            writeAuditLog(restored.id, restored.name, restored.role, "Session restored");
+            setSessionLoading(false);
+            return;
+          } catch (apiErr) {
+            console.warn("Stored backend session could not be restored", apiErr);
+            clearApiToken();
+          }
+        }
         if (storedToken) {
           const validated = validateSessionToken(storedToken);
           if (validated) {
@@ -192,18 +327,25 @@ export function AuthProvider({ children }) {
       setSessionLoading(false);
     };
     init();
-  }, [refreshLocalState]);
+  }, [refreshLocalState, syncBackendTables]);
 
   const openAuth = useCallback((mode = "portal") => setAuthModal(mode), []);
   const closeAuth = useCallback(() => setAuthModal(null), []);
 
-  const _persist = (userData, rememberMe) => {
+  const _persist = (userData, rememberMe, apiToken = null) => {
     setUser(userData);
     const token = generateSessionToken(userData);
     if (rememberMe) {
       localStorage.setItem("msme_auth_token", token);
+      sessionStorage.removeItem("msme_auth_token");
     } else {
       sessionStorage.setItem("msme_auth_token", token);
+      localStorage.removeItem("msme_auth_token");
+    }
+    if (apiToken) {
+      persistApiToken(apiToken, rememberMe);
+    } else {
+      clearApiToken();
     }
   };
 
@@ -211,6 +353,49 @@ export function AuthProvider({ children }) {
   const login = async (idOrEmailOrPhone, password, role, rememberMe = false) => {
     await delay(1000);
     if (!idOrEmailOrPhone.trim() || !password) throw new Error("All fields are required.");
+
+    const normalizedLogin = idOrEmailOrPhone.toLowerCase().trim();
+    const apiEmail =
+      role === "employee" && !normalizedLogin.includes("@")
+        ? `${normalizedLogin}@idbi.co.in`
+        : role === "admin" && !normalizedLogin.includes("@")
+          ? "admin@idbi.co.in"
+          : normalizedLogin;
+
+    try {
+      const auth = await api.login({ email: apiEmail, password });
+      const apiToken = auth?.access_token;
+      const apiUser = await api.me(apiToken);
+      const localApplicants = JSON.parse(localStorage.getItem("msme_users") || "[]");
+      const localEmployees = JSON.parse(localStorage.getItem("msme_employees") || "[]");
+      const localAdmins = JSON.parse(localStorage.getItem("msme_admins") || "[]");
+      const localFallback =
+        localApplicants.find((u) => u.email?.toLowerCase() === apiUser.email?.toLowerCase()) ||
+        localEmployees.find((u) => u.email?.toLowerCase() === apiUser.email?.toLowerCase()) ||
+        localAdmins.find((u) => u.email?.toLowerCase() === apiUser.email?.toLowerCase()) ||
+        {};
+      const userData = mapApiUserToSession(apiUser, localFallback);
+
+      if (role !== userData.role && !(role === "admin" && apiUser.role === "super_admin")) {
+        throw new Error(`This account is registered as ${userData.role}, not ${role}.`);
+      }
+
+      if (userData.role === "applicant") {
+        const updatedApplicant = mapApiUserToApplicant(apiUser, localFallback);
+        const withoutDuplicate = localApplicants.filter(
+          (u) => u.email?.toLowerCase() !== updatedApplicant.email?.toLowerCase()
+        );
+        localStorage.setItem("msme_users", JSON.stringify([...withoutDuplicate, updatedApplicant]));
+      }
+
+      _persist(userData, rememberMe, apiToken);
+      await syncBackendTables(userData, apiToken);
+      writeAuditLog(userData.id, userData.name, userData.role, "Logged in successfully via backend API");
+      refreshLocalState();
+      return userData;
+    } catch (apiErr) {
+      console.warn("Backend login failed, falling back to local demo auth", apiErr);
+    }
 
     const hashedInputPw = await hashPassword(password);
 
@@ -314,8 +499,14 @@ export function AuthProvider({ children }) {
       throw new Error("An account with this email already exists.");
     }
 
+    const apiUser = await api.registerApplicant({
+      email: email.toLowerCase().trim(),
+      password,
+      name: name.trim(),
+    });
+
     const hashedPw = await hashPassword(password);
-    const newUserId = `user_MSME-${100 + users.length + 1}`;
+    const newUserId = apiUser?.id || `user_MSME-${100 + users.length + 1}`;
 
     const newUser = {
       id: newUserId,
@@ -396,15 +587,49 @@ export function AuthProvider({ children }) {
 
     const linkedId = matchedSeed ? matchedSeed.id : "MSME-009";
 
+    const apiToken = getStoredApiToken();
+    let apiLoan = null;
+    let apiScore = null;
+    if (apiToken) {
+      const profilePayload = {
+        name: user.name,
+        business_name: businessName,
+        business_type: businessType,
+        address,
+        gstin: gstin.toUpperCase(),
+        pan: pan.toUpperCase(),
+        aadhaar: aadhaar.replace(/\s/g, ""),
+        vintage: "1 Year",
+        employees_count: 12,
+      };
+      await api.updateApplicantProfile(apiToken, profilePayload);
+      await api.ingestFinancialData(apiToken, buildFinancialPayload(loanAmount));
+      apiLoan = await api.applyLoan(apiToken, {
+        amount: Number(loanAmount) || 1000000,
+        purpose: loanPurpose || "Working Capital",
+      });
+      try {
+        apiScore = await api.getApplicantScore(apiToken);
+      } catch (scoreErr) {
+        console.warn("Backend score is not ready yet", scoreErr);
+      }
+    }
+
     // Create New Loan Application
     const loans = JSON.parse(localStorage.getItem("msme_loan_applications") || "[]");
     const newLoan = {
-      id: `LN-${100 + loans.length + 1}`,
+      id: apiLoan?.id || `LN-${100 + loans.length + 1}`,
       msmeId: linkedId,
-      amount: Number(loanAmount) || 1000000,
-      purpose: loanPurpose || "Working Capital",
-      date: new Date().toISOString().split("T")[0],
-      status: linkedId === "MSME-008" ? "Manual Review Required" : "Under Review",
+      amount: Number(apiLoan?.amount || loanAmount) || 1000000,
+      purpose: apiLoan?.purpose || loanPurpose || "Working Capital",
+      date: apiLoan?.submitted_at ? apiLoan.submitted_at.split("T")[0] : new Date().toISOString().split("T")[0],
+      status: apiLoan?.status
+        ? apiLoan.status
+            .split("_")
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(" ")
+        : linkedId === "MSME-008" ? "Manual Review Required" : "Under Review",
+      apiScore,
     };
 
     // Update applicant record in localStorage
@@ -493,6 +718,7 @@ export function AuthProvider({ children }) {
     setUser(null);
     localStorage.removeItem("msme_auth_token");
     sessionStorage.removeItem("msme_auth_token");
+    clearApiToken();
   };
 
   // ── Admin Employee Management ──
@@ -502,13 +728,22 @@ export function AuthProvider({ children }) {
     if (emps.find((e) => e.id.toLowerCase() === empId.toLowerCase().trim())) {
       throw new Error("Employee ID already exists.");
     }
+    const apiToken = getStoredApiToken();
+    const apiEmployee = apiToken
+      ? await api.createEmployee(apiToken, {
+          email: `${empId.trim().toLowerCase()}@idbi.co.in`,
+          password,
+          name: name.trim(),
+          employee_id_code: empId.trim().toUpperCase(),
+        })
+      : null;
     const hashedPw = await hashPassword(password);
     const newEmp = {
-      id: empId.trim().toUpperCase(),
-      name: name.trim(),
-      email: `${empId.trim().toLowerCase()}@idbi.co.in`,
+      id: apiEmployee?.profile?.employee_id_code || empId.trim().toUpperCase(),
+      name: apiEmployee?.profile?.name || name.trim(),
+      email: apiEmployee?.email || `${empId.trim().toLowerCase()}@idbi.co.in`,
       password: hashedPw,
-      status: "Active",
+      status: normalizeStatus(apiEmployee?.status),
       color: AVATAR_COLORS[emps.length % AVATAR_COLORS.length],
       initials: initials(name.trim()),
     };
@@ -583,8 +818,22 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const updateApplicantProfile = (ownerName, phone) => {
+  const updateApplicantProfile = async (ownerName, phone) => {
     if (!user || user.role !== "applicant") return;
+    const apiToken = getStoredApiToken();
+    if (apiToken && user.kycDetails) {
+      await api.updateApplicantProfile(apiToken, {
+        name: ownerName || user.name,
+        business_name: user.kycDetails.businessName || "",
+        business_type: user.kycDetails.businessType || "",
+        address: user.kycDetails.address || "",
+        gstin: user.kycDetails.gstin || "",
+        pan: user.kycDetails.pan || "",
+        aadhaar: user.kycDetails.aadhaar || "",
+        vintage: "1 Year",
+        employees_count: 12,
+      });
+    }
     const users = JSON.parse(localStorage.getItem("msme_users") || "[]");
     const updated = users.map((u) => {
       if (u.id === user.id) {

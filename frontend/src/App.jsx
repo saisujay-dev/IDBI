@@ -5735,8 +5735,47 @@ export default function App() {
         loanPurpose: loan.purpose || baseMsme.loanPurpose,
       };
       const scored = scoreMSME(msmeData);
+      const backendScore = loan.apiScore;
+      const effectiveScored = backendScore
+        ? {
+            ...scored,
+            overallScore: backendScore.overall_score ?? scored.overallScore,
+            riskBand: backendScore.risk_category || scored.riskBand,
+            recommendedAction: backendScore.recommendation || scored.recommendedAction,
+            subScores: {
+              ...scored.subScores,
+              cashFlowStrength: {
+                ...scored.subScores.cashFlowStrength,
+                score: backendScore.cash_flow_score ?? scored.subScores.cashFlowStrength.score,
+              },
+              revenueConsistency: {
+                ...scored.subScores.revenueConsistency,
+                score: backendScore.revenue_score ?? scored.subScores.revenueConsistency.score,
+              },
+              complianceBehavior: {
+                ...scored.subScores.complianceBehavior,
+                score: backendScore.compliance_score ?? scored.subScores.complianceBehavior.score,
+              },
+              operationalContinuity: {
+                ...scored.subScores.operationalContinuity,
+                score: backendScore.operations_score ?? scored.subScores.operationalContinuity.score,
+              },
+              financialResilience: {
+                ...scored.subScores.financialResilience,
+                score: backendScore.resilience_score ?? scored.subScores.financialResilience.score,
+              },
+            },
+            crossValidation: {
+              ...scored.crossValidation,
+              avgDivergence: backendScore.cross_val_divergence ?? scored.crossValidation.avgDivergence,
+              isFlagged: backendScore.cross_val_flagged ?? scored.crossValidation.isFlagged,
+            },
+            backendUnderwriterNote: backendScore.underwriter_note,
+            backendAiExplanation: backendScore.ai_explanation,
+          }
+        : scored;
 
-      let action = scored.recommendedAction;
+      let action = effectiveScored.recommendedAction;
       if (loan.status === "Approved") action = "APPROVE";
       else if (loan.status === "Approved with Conditions") action = "APPROVE_CONDITIONS";
       else if (loan.status === "Declined") action = "DECLINE";
@@ -5752,7 +5791,7 @@ export default function App() {
       };
 
       return {
-        ...scored,
+        ...effectiveScored,
         recommendedAction: action,
         actionConfig: ACTIONS_MAP[action] || ACTIONS_MAP.REVIEW_MANUALLY,
         loanId: loan.id,
