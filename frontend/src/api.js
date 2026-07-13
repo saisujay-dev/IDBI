@@ -1,4 +1,6 @@
-export const API_BASE_URL = "https://idbi-backend-0am7.onrender.com";
+export const API_BASE_URL = window.location.hostname === "localhost" 
+  ? "http://localhost:8000" 
+  : "https://idbi-backend-0am7.onrender.com";
 
 const getJson = async (response) => {
   const text = await response.text();

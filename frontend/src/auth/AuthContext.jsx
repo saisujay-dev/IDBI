@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { api } from "../api";
+import { MSME_DATA } from "../data/msmeData";
+import { scoreMSME } from "../engine/scoringEngine";
 
 // ── Context ──────────────────────────────────────────────────────────────────
 const AuthContext = createContext(null);
@@ -281,14 +283,58 @@ export function AuthProvider({ children }) {
         const applications = await api.getEmployeeApplications(token);
         localStorage.setItem(
           "msme_loan_applications",
-          JSON.stringify((applications || []).map(mapApiApplicationToLoan))
+          JSON.stringify((applications || []).map((app, index) => mapApiApplicationToLoan(app, index)))
         );
+
+        // Populate applicants list dynamically from active loan profiles for employee dashboard reviews
+        const mockApplicants = (applications || []).map((app) => {
+          let msmeId = null;
+          if (app.amount >= 2500000) msmeId = "MSME-001";
+          else if (app.amount >= 1800000) msmeId = "MSME-002";
+          else if (app.amount >= 1500000) msmeId = "MSME-005";
+          else if (app.amount >= 500000) msmeId = "MSME-006";
+          else msmeId = "MSME-009";
+
+          const baseMsme = MSME_DATA.find((m) => m.id === msmeId) || MSME_DATA[0];
+          return {
+            id: app.user_id,
+            linkedMsmeId: msmeId,
+            name: baseMsme.owner,
+            email: `${baseMsme.owner.toLowerCase().replace(/\s/g, "")}@example.com`,
+            mobileNumber: "9876543210",
+            verified: true,
+            status: "Active",
+            kycCompleted: true,
+            kycDetails: {
+              businessName: baseMsme.name,
+              businessType: baseMsme.sector,
+              address: baseMsme.location,
+              gstin: baseMsme.udyam,
+            },
+          };
+        });
+        localStorage.setItem("msme_users", JSON.stringify(mockApplicants));
         refreshLocalState();
+      } else if (sessionUser.role === "applicant") {
+        // Fetch applicant's own applications directly using dynamic URL routing
+        const response = await fetch(`${window.location.hostname === "localhost" ? "http://localhost:8000" : "https://idbi-backend-0am7.onrender.com"}/applicant/applications`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (response.ok) {
+          const applications = await response.json();
+          localStorage.setItem(
+            "msme_loan_applications",
+            JSON.stringify((applications || []).map((app, index) => 
+              mapApiApplicationToLoan(app, index, sessionUser.linkedMsmeId)
+            ))
+          );
+          refreshLocalState();
+        }
       }
     } catch (err) {
       console.warn("Backend table sync failed", err);
     }
-  }, [refreshLocalState]);
+  }, [refreshLocalState, mapApiApplicationToLoan]);
 
   // Initialize DB and Restore session on mount
   useEffect(() => {
@@ -599,11 +645,37 @@ export function AuthProvider({ children }) {
         gstin: gstin.toUpperCase(),
         pan: pan.toUpperCase(),
         aadhaar: aadhaar.replace(/\s/g, ""),
-        vintage: "1 Year",
-        employees_count: 12,
+        vintage: "5 Years",
+        employees_count: 15,
       };
       await api.updateApplicantProfile(apiToken, profilePayload);
-      await api.ingestFinancialData(apiToken, buildFinancialPayload(loanAmount));
+      
+      // Upload 12 months financial telemetry vectors matching the selected MSME profile
+      const seedMsme = MSME_DATA.find((m) => m.id === linkedId) || MSME_DATA[0];
+      const months = ["2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"];
+      
+      for (let i = 0; i < 12; i++) {
+        const finPayload = {
+          year_month: months[i],
+          gst_turnover: seedMsme.gst?.monthlyTurnover?.[i] || 0,
+          upi_inflow: seedMsme.upi?.monthlyInflow?.[i] || 0,
+          bank_inflow: seedMsme.aaBankData?.monthlyInflow?.[i] || 0,
+          bank_outflow: seedMsme.aaBankData?.monthlyOutflow?.[i] || 0,
+          bank_avg_balance: seedMsme.aaBankData?.avgBalance || 0,
+          bank_min_balance: seedMsme.aaBankData?.minBalance || 0,
+          bank_bounce_incidents: i === 11 ? (seedMsme.aaBankData?.bounceIncidents || 0) : 0,
+          bank_low_balance_months: i === 11 ? (seedMsme.aaBankData?.lowBalanceMonths || 0) : 0,
+          bank_od_cc_utilized: seedMsme.aaBankData?.od_cc_utilized || 0,
+          epfo_contributions: seedMsme.epfo?.monthlyContributions?.[i] || 0,
+          epfo_employee_count: seedMsme.epfo?.employeeCountTrend?.[i] || 0,
+          utility_monthly_units: seedMsme.utility?.monthlyUnits?.[i] || 0,
+          utility_payment_regularity: seedMsme.utility?.paymentRegularity || 1.0,
+          utility_disconnection_events: i === 11 ? (seedMsme.utility?.disconnectionEvents || 0) : 0,
+        };
+
+        await api.ingestFinancialData(apiToken, finPayload);
+      }
+
       apiLoan = await api.applyLoan(apiToken, {
         amount: Number(loanAmount) || 1000000,
         purpose: loanPurpose || "Working Capital",
