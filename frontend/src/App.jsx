@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   BarChart,
   Bar,
@@ -214,7 +214,7 @@ function Topbar({ view, setView }) {
 
   const handleLogoClick = () => {
     if (!user) {
-      setView("home");
+      setView("public");
     } else if (user.role === "applicant") {
       setView("applicant_dashboard");
     } else if (user.role === "employee") {
@@ -5505,8 +5505,186 @@ function PlatformMonitoringView() {
 
 // ═════════════════════════════════════════════════════════════════════════════
 // ── 8. MAIN APP COMPONENT (ROUTING AND GUARDS) ────────────────────────────────
+// ── Public Applicant View (default unauthenticated view) ────────────────────
+function PublicApplicantView({ onLogin }) {
+  const products = [
+    {
+      id: "prod_wc",
+      title: "IDBI Working Capital Digital Finance",
+      desc: "Calibrated short-term credit facilities to bridge operational cash-flow gaps, inventory purchases, or payroll disbursements. Evaluates real-time cash ledger velocities.",
+      tenure: "12 to 24 Months",
+      rates: "8.5% – 11.2% p.a.",
+      amountRange: "₹5L – ₹50L",
+      icon: "💼",
+    },
+    {
+      id: "prod_asset",
+      title: "IDBI Equipment & Machinery Finance",
+      desc: "Collateral-free asset procurement options to finance operational equipment, server hardware, or logistics vehicles. Mapped directly to operational continuity signals.",
+      tenure: "24 to 48 Months",
+      rates: "9.0% – 12.0% p.a.",
+      amountRange: "₹10L – ₹75L",
+      icon: "⚙️",
+    },
+    {
+      id: "prod_ntc",
+      title: "IDBI NTC/NTB Enterprise Growth Line",
+      desc: "Custom credit options optimised for New-to-Credit and New-to-Bank thin-file MSMEs. Scores creditworthiness based on compliance filings and utility consistencies.",
+      tenure: "6 to 18 Months",
+      rates: "9.5% – 13.0% p.a.",
+      amountRange: "₹2L – ₹30L",
+      icon: "🚀",
+    },
+  ];
+
+  return (
+    <div className="fade-in">
+      {/* Hero */}
+      <div className="page-header" style={{ textAlign: "center", paddingBottom: "0" }}>
+        <h1 className="page-title" style={{ fontSize: "clamp(22px, 4vw, 34px)" }}>
+          AI-Powered MSME Financial Health Card
+        </h1>
+        <p className="page-subtitle" style={{ maxWidth: "620px", margin: "10px auto 0" }}>
+          Explainable alternate-data credit scoring for New-to-Credit &amp; New-to-Bank enterprises — GST, UPI, bank
+          flows, EPFO &amp; utility signals with full auditability.
+        </p>
+        <div style={{ display: "flex", gap: "12px", justifyContent: "center", marginTop: "22px", flexWrap: "wrap" }}>
+          <button
+            className="landing-btn-primary"
+            onClick={onLogin}
+            style={{ padding: "13px 32px", fontSize: "14px", borderRadius: "12px" }}
+          >
+            Get Started — Apply for Loan →
+          </button>
+          <button
+            className="landing-btn-secondary"
+            onClick={onLogin}
+            style={{ padding: "13px 28px", fontSize: "14px", borderRadius: "12px" }}
+          >
+            Log In to Dashboard
+          </button>
+        </div>
+      </div>
+
+      <DisclaimerBanner />
+
+      {/* Stats strip */}
+      <div className="stats-row" style={{ marginBottom: "28px" }}>
+        {[
+          { label: "Loan Products", value: "3", sub: "available now" },
+          { label: "Max Facility", value: "₹75L", sub: "per application" },
+          { label: "Score Range", value: "0 – 1000", sub: "health score" },
+          { label: "Data Sources", value: "5", sub: "alternate streams" },
+          { label: "Decision Time", value: "< 48h", sub: "underwriter SLA" },
+        ].map((s, i) => (
+          <div key={i} className="stat-card">
+            <div className="stat-label">{s.label}</div>
+            <div className="stat-value" style={{ color: "var(--accent-blue-light)" }}>{s.value}</div>
+            <div className="stat-sub">{s.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Loan Products */}
+      <div style={{ marginBottom: "12px" }}>
+        <h2 style={{ fontSize: "16px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "4px" }}>
+          Available Loan Products
+        </h2>
+        <p style={{ fontSize: "12.5px", color: "var(--text-secondary)" }}>
+          Log in or register to apply. All products use AI-powered alternate data scoring.
+        </p>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginBottom: "32px" }}>
+        {products.map((p) => (
+          <div
+            key={p.id}
+            className="card"
+            style={{ padding: "24px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "20px", flexWrap: "wrap" }}
+          >
+            <div style={{ display: "flex", gap: "16px", flex: 1, alignItems: "flex-start", minWidth: "280px" }}>
+              <span style={{ fontSize: "32px", flexShrink: 0, marginTop: "2px" }}>{p.icon}</span>
+              <div>
+                <h3 style={{ fontSize: "15px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "6px" }}>
+                  {p.title}
+                </h3>
+                <p style={{ fontSize: "13px", color: "var(--text-secondary)", lineHeight: "1.5", marginBottom: "14px" }}>
+                  {p.desc}
+                </p>
+                <div style={{ display: "flex", gap: "24px", flexWrap: "wrap" }}>
+                  <div>
+                    <span style={{ fontSize: "10px", color: "var(--text-muted)", display: "block", textTransform: "uppercase", letterSpacing: "0.5px" }}>Facility Size</span>
+                    <strong style={{ fontSize: "13px", color: "var(--text-primary)" }}>{p.amountRange}</strong>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: "10px", color: "var(--text-muted)", display: "block", textTransform: "uppercase", letterSpacing: "0.5px" }}>Tenure</span>
+                    <strong style={{ fontSize: "13px", color: "var(--text-primary)" }}>{p.tenure}</strong>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: "10px", color: "var(--text-muted)", display: "block", textTransform: "uppercase", letterSpacing: "0.5px" }}>Interest</span>
+                    <strong style={{ fontSize: "13px", color: "var(--risk-low-color)" }}>{p.rates}</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <button
+              className="landing-btn-primary"
+              onClick={onLogin}
+              style={{ padding: "12px 24px", borderRadius: "10px", fontSize: "13px", minWidth: "140px", flexShrink: 0 }}
+            >
+              Apply Now →
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* How it works */}
+      <div className="card" style={{ padding: "28px" }}>
+        <h3 style={{ fontSize: "15px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "18px" }}>
+          How the AI Scoring Works
+        </h3>
+        <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+          {[
+            { icon: "📊", title: "Alternate Data Ingestion", desc: "GST filings, UPI volumes, bank statement credits, EPFO contributions & utility patterns" },
+            { icon: "🔍", title: "Cross-Validation Engine", desc: "Automatic fraud detection by cross-validating GST declared turnover against bank inflows" },
+            { icon: "⚖️", title: "5-Dimension Scoring", desc: "Cash-Flow, Revenue Consistency, Compliance, Operational Continuity & Financial Resilience" },
+            { icon: "📋", title: "Explainable Output", desc: "Full underwriter narrative with positive drivers, risk factors, and recommended action" },
+          ].map((item, i) => (
+            <div key={i} style={{ flex: "1 1 200px", display: "flex", gap: "12px", alignItems: "flex-start" }}>
+              <span style={{ fontSize: "22px", flexShrink: 0 }}>{item.icon}</span>
+              <div>
+                <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "4px" }}>{item.title}</div>
+                <div style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: "1.4" }}>{item.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Trust strip */}
+      <div className="landing-trust" style={{ marginTop: "24px" }}>
+        {[
+          { icon: "🔒", text: "Secure by design" },
+          { icon: "📑", text: "RBI compliant" },
+          { icon: "🏛️", text: "DPDP Act 2023" },
+          { icon: "🔗", text: "AA Framework" },
+          { icon: "🧪", text: "Prototype · Demo data" },
+        ].map((t, i) => (
+          <div key={i} className="trust-item">
+            <span>{t.icon}</span>
+            <span>{t.text}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ── 8. MAIN APP COMPONENT (ROUTING AND GUARDS) ────────────────────────────────
 // ═════════════════════════════════════════════════════════════════════════════
 export default function App() {
+
   const {
     user,
     sessionLoading,
@@ -5526,9 +5704,22 @@ export default function App() {
     resetPassword,
   } = useAuth();
 
-  const [view, setView] = useState("home");
+  const [view, setView] = useState("public");
   const [selectedMSME, setSelectedMSME] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
+
+  // Ref to store a pending action when unauthenticated user clicks a protected feature
+  const pendingActionRef = useRef(null);
+
+  // Gatekeeper: if logged in, execute immediately; otherwise store & open auth modal
+  const requireAuth = (action) => {
+    if (user) {
+      action();
+    } else {
+      pendingActionRef.current = action;
+      openAuth("portal");
+    }
+  };
 
   // Recalculate credit scores dynamically on config, applicants, or loan applications change
   const scoredMsmes = useMemo(() => {
@@ -5604,17 +5795,26 @@ export default function App() {
 
   // Navigate to corresponding dashboard on Login
   useEffect(() => {
-    if (user && view === "home") {
+    if (user && (view === "public" || view === "employee_dashboard") && !pendingActionRef.current) {
       if (user.role === "applicant") setView("applicant_dashboard");
       else if (user.role === "employee") setView("employee_dashboard");
       else if (user.role === "admin") setView("admin_dashboard");
     }
   }, [user, view]);
 
-  // Navigate to home on Logout
+  // Execute pending action after login completes
+  useEffect(() => {
+    if (user && pendingActionRef.current) {
+      const action = pendingActionRef.current;
+      pendingActionRef.current = null;
+      action();
+    }
+  }, [user]);
+
+  // Navigate to public applicant view on Logout
   useEffect(() => {
     if (!user) {
-      setView("home");
+      setView("public");
       setSelectedMSME(null);
       setSelectedProduct(null);
     }
@@ -5623,7 +5823,7 @@ export default function App() {
   // Namespace route protection guard
   useEffect(() => {
     if (!user) {
-      if (view !== "home") setView("home");
+      // Public view is always shown for unauthenticated visitors regardless of view state
       return;
     }
 
@@ -5667,11 +5867,10 @@ export default function App() {
 
   // Master Route Renderer
   const renderContent = () => {
-    if (view === "home") {
-      return <LandingView onGetStarted={() => openAuth("signup_applicant")} onLogin={() => openAuth("portal")} />;
+    // Public view: Applicant-facing loan products dashboard — actions are auth-gated
+    if (!user) {
+      return <PublicApplicantView onLogin={() => requireAuth(() => {})} />;
     }
-
-    if (!user) return <AccessGate />;
 
     // ── APPLICANT ROUTER ──
     if (user.role === "applicant") {
